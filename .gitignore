@@ -10,3 +10,8 @@ playwright-report/
 *.log
 backend/.coverage
 *.tsbuildinfo
+private_documents/
+.paddlex/
+.paddleocr/
+tmp/
+*.png.preview.png

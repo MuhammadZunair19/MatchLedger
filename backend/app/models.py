@@ -139,7 +139,48 @@ class Document(Tenant, Base):
     content_type: Mapped[str] = mapped_column(String(100))
     size_bytes: Mapped[int]
     sha256: Mapped[str] = mapped_column(String(64))
+    document_type: Mapped[str] = mapped_column(String(24), default='purchase_order', server_default='purchase_order')
+    status: Mapped[str] = mapped_column(String(24), default='UPLOADED', server_default='UPLOADED')
+    page_count: Mapped[int] = mapped_column(default=1, server_default='1')
+    detected_languages: Mapped[list] = mapped_column(JSON, default=list, server_default='[]')
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    review_data: Mapped[dict | None] = mapped_column(JSON)
+    review_revision: Mapped[int] = mapped_column(default=0, server_default='0')
+    reviewed_by: Mapped[str | None] = mapped_column(ForeignKey('users.id'))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    business_entity_type: Mapped[str | None] = mapped_column(String(40))
+    business_entity_id: Mapped[str | None] = mapped_column(String(36))
     __table_args__ = (UniqueConstraint('organization_id', 'id'), CheckConstraint('size_bytes > 0'))
+
+
+class DocumentExtraction(Tenant, Base):
+    __tablename__ = 'document_extractions'
+    document_id: Mapped[str] = mapped_column(String(36), index=True)
+    version: Mapped[int]
+    engine: Mapped[str] = mapped_column(String(120), default='native-pdf+paddleocr/deterministic-v1')
+    status: Mapped[str] = mapped_column(String(24), default='QUEUED')
+    job_id: Mapped[str] = mapped_column(String(100), unique=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_pages: Mapped[list | None] = mapped_column(JSON)
+    extracted_data: Mapped[dict | None] = mapped_column(JSON)
+    warnings: Mapped[list] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(String(1000))
+    __table_args__ = (UniqueConstraint('organization_id', 'id'), UniqueConstraint('organization_id', 'document_id', 'version'),
+        ForeignKeyConstraint(['organization_id', 'document_id'], ['documents.organization_id', 'documents.id'], ondelete='CASCADE'))
+
+
+class FieldCorrection(Tenant, Base):
+    __tablename__ = 'field_corrections'
+    document_id: Mapped[str] = mapped_column(String(36), index=True)
+    extraction_id: Mapped[str] = mapped_column(String(36))
+    revision: Mapped[int]
+    field_path: Mapped[str] = mapped_column(String(200))
+    previous_value: Mapped[dict] = mapped_column(JSON)
+    reviewed_value: Mapped[dict] = mapped_column(JSON)
+    __table_args__ = (ForeignKeyConstraint(['organization_id', 'document_id'], ['documents.organization_id', 'documents.id'], ondelete='CASCADE'),
+        ForeignKeyConstraint(['organization_id', 'extraction_id'], ['document_extractions.organization_id', 'document_extractions.id'], ondelete='CASCADE'))
 
 
 class MatchRun(Tenant, Base):

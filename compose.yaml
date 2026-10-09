@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
   db:
     image: postgres:17-alpine
     environment:
@@ -18,18 +28,50 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-matchledger}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-matchledger}
+      REDIS_URL: redis://redis:6379/0
+      DOCUMENT_STORAGE_PATH: /workspace/private_documents
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-20}
+      MAX_DOCUMENT_PAGES: ${MAX_DOCUMENT_PAGES:-30}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       SESSION_HOURS: ${SESSION_HOURS:-12}
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
       db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    volumes: ["document_files:/workspace/private_documents"]
+    mem_limit: 2g
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 5s
       timeout: 5s
       retries: 20
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: worker
+    command: ["python", "-m", "app.worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-matchledger}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-matchledger}
+      REDIS_URL: redis://redis:6379/0
+      DOCUMENT_STORAGE_PATH: /workspace/private_documents
+      OCR_DEVICE: ${OCR_DEVICE:-cpu}
+      OCR_LANGUAGES: ${OCR_LANGUAGES:-en,ar}
+      OCR_DPI: ${OCR_DPI:-150}
+      MAX_DOCUMENT_PAGES: ${MAX_DOCUMENT_PAGES:-30}
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED:-false}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+      PADDLE_PDX_CACHE_HOME: /home/appuser/.paddlex
+    volumes: ["document_files:/workspace/private_documents", "ocr_models:/home/appuser/.paddlex"]
+    depends_on:
+      backend: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    mem_limit: 4g
+    cpus: 2
+    restart: unless-stopped
   frontend:
     build: ./frontend
     environment:
@@ -39,3 +81,6 @@ services:
       backend: {condition: service_healthy}
 volumes:
   postgres_data:
+  redis_data:
+  document_files:
+  ocr_models:

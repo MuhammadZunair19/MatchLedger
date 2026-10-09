@@ -19,6 +19,10 @@ log = logging.getLogger('matchledger')
 @app.middleware('http')
 async def safety(request: Request, call_next):
     request_id = str(uuid.uuid4())
+    if request.url.path == '/api/documents/upload':
+        length = request.headers.get('content-length', '')
+        if not length.isdigit() or int(length) > settings.max_upload_size_mb * 1024 * 1024 + 65536:
+            return JSONResponse({'error': {'code': '413', 'message': 'Upload exceeds the size limit or has no Content-Length'}}, status_code=413)
     if request.method not in ('GET', 'HEAD', 'OPTIONS') and request.headers.get('origin') not in (None, settings.app_origin):
         return JSONResponse({'error': {'code': '403', 'message': 'Origin is not allowed'}}, status_code=403)
     try:
@@ -273,3 +277,7 @@ def dashboard(ctx: Context = Depends(current), db: DBSession = Depends(get_db)):
         totals[row.currency] = s.sum_money([totals.get(row.currency, Decimal('0.00')), value])
     recent = db.scalars(scoped(m.AuditEvent, ctx).order_by(m.AuditEvent.created_at.desc()).limit(8)).all()
     return {'counts': counts, 'invoice_totals': {k: str(v) for k, v in totals.items()}, 'activity': [public(row) for row in recent]}
+
+
+from .document_routes import router as document_router
+app.include_router(document_router)
