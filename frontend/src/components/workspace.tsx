@@ -5,6 +5,8 @@ import { api, Auth, Page, RecordRow, money, allRecords } from '@/lib/api';
 import { Button } from './ui/button';
 import AuthForm from './auth-form';
 import RecordEditor from './record-editor';
+import DocumentWorkspace from './document-workspace';
+import { useRouter, usePathname } from 'next/navigation';
 
 const navigation = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -12,14 +14,16 @@ const navigation = [
   { id: 'purchase-orders', label: 'Purchase orders', icon: ClipboardList },
   { id: 'receipts', label: 'Goods receipts', icon: PackageCheck },
   { id: 'invoices', label: 'Supplier invoices', icon: ReceiptText },
+  { id: 'documents', label: 'Documents', icon: Layers3 },
   { id: 'members', label: 'Team members', icon: Users },
 ];
 type Dashboard = { counts: { [key: string]: number }; invoice_totals: { [key: string]: string }; activity: { id: string; action: string; entity_type: string; created_at: string }[] };
 type Member = { id: string; name: string; email: string; role: string };
 
-export default function Workspace() {
+export default function Workspace({ initialScreen = 'dashboard' }: { initialScreen?: string }) {
+  const router = useRouter(); const pathname = usePathname();
   const [auth, setAuth] = useState<Auth | null>(null); const [initializing, setInitializing] = useState(true);
-  const [screen, setScreen] = useState('dashboard'); const [mobile, setMobile] = useState(false);
+  const [screen, setScreen] = useState(initialScreen); const [mobile, setMobile] = useState(false);
   const [data, setData] = useState<Page | null>(null); const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [suppliers, setSuppliers] = useState<RecordRow[]>([]); const [orders, setOrders] = useState<RecordRow[]>([]);
   const [members, setMembers] = useState<Member[]>([]); const [query, setQuery] = useState(''); const [search, setSearch] = useState(''); const [page, setPage] = useState(1);
@@ -30,6 +34,7 @@ export default function Workspace() {
     if (!auth) return;
     let active = true; setLoading(true); setError(''); setData(null); setDashboard(null); setMembers([]);
     const load = async () => {
+      if (screen === 'documents') return;
       if (screen === 'dashboard') { const value = await api<Dashboard>('/dashboard'); if (active) setDashboard(value); }
       else if (screen === 'members') { const value = await api<Member[]>('/members'); if (active) setMembers(value); }
       else {
@@ -40,7 +45,7 @@ export default function Workspace() {
     load().catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [auth, screen, page, search, version]);
-  function navigate(id: string) { setScreen(id); setPage(1); setSearch(''); setQuery(''); setNotice(''); setDeleting(null); setMobile(false); }
+  function navigate(id: string) { if (id === 'documents' && !pathname.startsWith('/documents')) router.push('/documents'); setScreen(id); setPage(1); setSearch(''); setQuery(''); setNotice(''); setDeleting(null); setMobile(false); }
   async function logout() { setBusy(true); try { await api('/auth/logout', { method: 'POST' }, auth?.csrf_token); setAuth(null); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   async function remove(id: string) {
     setBusy(true); setError('');
@@ -56,7 +61,7 @@ export default function Workspace() {
   if (!auth) return <AuthForm onAuth={a => { setAuth(a); navigate('dashboard'); }} />;
   const org = auth.organizations.find(o => o.id === auth.organization_id)!;
   const title = navigation.find(n => n.id === screen)?.label;
-  const isResource = !['dashboard', 'members'].includes(screen);
+  const isResource = !['dashboard', 'members', 'documents'].includes(screen);
   return <div className="min-h-screen lg:pl-64">
     <aside className={`${mobile ? 'flex' : 'hidden'} lg:flex fixed inset-y-0 left-0 w-64 z-30 bg-[#132d3d] text-slate-300 flex-col p-5 overflow-y-auto`}>
       <div className="flex items-center gap-2.5 text-xl text-white font-bold px-2 pt-3 pb-10"><Layers3 className="text-teal-300" size={25} />MatchLedger<span className="text-teal-300 -ml-2">.</span><button className="lg:hidden ml-auto" onClick={() => setMobile(false)} aria-label="Close navigation"><X size={18} /></button></div>
@@ -72,6 +77,7 @@ export default function Workspace() {
       {error && <div role="alert" className="p-4 bg-red-50 border border-red-100 rounded-lg text-red-700 mb-5">{error}<Button variant="ghost" size="sm" className="ml-3" onClick={() => setVersion(v => v + 1)}>Retry</Button></div>}
       {notice && <p role="status" className="p-3 mb-5 rounded-lg bg-teal-50 text-teal-800 flex gap-2 items-center"><CheckCircle2 size={16} />{notice}</p>}
       {loading && <p role="status" className="py-12 text-slate-500">Loading your records…</p>}
+      {screen === 'documents' && <DocumentWorkspace key={auth.organization_id} auth={auth} />}
       {!loading && dashboard && screen === 'dashboard' && <>
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">{navigation.slice(1, 5).map(({ id, label, icon: Icon }) => <button key={id} onClick={() => navigate(id)} className="card p-5 text-left hover:border-teal-500 transition"><div className="flex justify-between items-center"><span className="text-xs text-slate-500">{label}</span><Icon className="text-teal-700 bg-teal-50 rounded-lg p-2" size={36} /></div><div className="text-3xl font-semibold mt-3">{dashboard.counts[id]}</div><p className="text-[11px] text-slate-400 mt-4 flex items-center justify-between">View records<ArrowUpRight size={14} /></p></button>)}</div>
         <div className="grid xl:grid-cols-3 gap-6"><section className="card xl:col-span-2 overflow-hidden"><div className="p-6 border-b border-slate-100 flex justify-between items-center"><div><h2 className="font-semibold">Recent activity</h2><p className="text-xs text-slate-400 mt-1">The latest changes in your organization</p></div><span className="eyebrow text-slate-400">Audit trail</span></div>{dashboard.activity.length ? dashboard.activity.map(event => <div key={event.id} className="px-6 py-4 flex items-center gap-4 border-b last:border-b-0 border-slate-100"><div className="bg-slate-100 rounded-full p-2 text-slate-500"><ClipboardList size={16} /></div><div><p className="text-sm capitalize">{event.action.replaceAll('_', ' ')} · {event.entity_type.replaceAll('_', ' ')}</p><p className="text-xs text-slate-400 mt-1">{new Date(event.created_at).toLocaleString()}</p></div></div>) : <p className="p-8 text-slate-500">Your activity will appear as you add records.</p>}</section>

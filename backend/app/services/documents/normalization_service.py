@@ -11,6 +11,7 @@ def normalize_text(value: str) -> str:
     # NFKC expands Arabic presentation forms; don't fold Arabic letters or strip name diacritics.
     value = unicodedata.normalize('NFKC', value).translate(DIGITS)
     value = value.replace('٫', '.').replace('٬', ',')
+    value = value.replace('\u00ad', '-')
     value = re.sub(r'[\u200e\u200f\u202a-\u202e\u2066-\u2069]', '', value)
     return re.sub(r'[ \t\u00a0]+', ' ', value).strip()
 

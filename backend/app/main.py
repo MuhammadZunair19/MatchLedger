@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func, delete, or_
+from sqlalchemy import select, func, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 from .db import get_db
@@ -27,8 +27,11 @@ async def safety(request: Request, call_next):
         return JSONResponse({'error': {'code': '403', 'message': 'Origin is not allowed'}}, status_code=403)
     try:
         response = await call_next(request)
-    except Exception:
-        log.exception('Unhandled request %s', request_id)
+    except Exception as exc:
+        if request.url.path.startswith('/api/documents'):
+            log.error('Document request %s failed (%s)', request_id, type(exc).__name__)
+        else:
+            log.exception('Unhandled request %s', request_id)
         response = JSONResponse({'error': {'code': '500', 'message': 'Unexpected server error', 'request_id': request_id}}, status_code=500)
     response.headers['X-Request-ID'] = request_id
     response.headers['X-Content-Type-Options'] = 'nosniff'

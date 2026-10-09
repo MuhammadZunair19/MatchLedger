@@ -2,7 +2,7 @@ import hashlib
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Response
 from fastapi.responses import FileResponse
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from redis.exceptions import RedisError
 from starlette.concurrency import run_in_threadpool

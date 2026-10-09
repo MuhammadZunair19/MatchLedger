@@ -73,8 +73,10 @@ def extract_fields(pages, document_type):
     for page in pages:
         for row in row_groups(page['tokens']):
             # Both text directions are considered, while preserving each span verbatim.
-            for ordered in (row, list(reversed(row))):
-                text = ' '.join(t['text'] for t in ordered)
+            for ordered in (sorted(row, key=lambda t: t.get('reading_order', 0)), row, list(reversed(row))):
+                raw_text = ' '.join(t['text'] for t in ordered)
+                text = normalize_text(raw_text)
+                text = re.sub(r'\s*-\s*', '-', text)
                 for name, names in aliases.items():
                     if fields[name]['original_value'] is not None: continue
                     for label in sorted(names, key=len, reverse=True):
@@ -84,6 +86,9 @@ def extract_fields(pages, document_type):
                             boxes = [t['bbox'] for t in ordered if t.get('bbox')]
                             if boxes: token['bbox'] = [min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes)]
                             fields[name] = field(match.group(1), token, page['number'], name)
+                            fields[name]['source_text'] = raw_text
+                            if ':' in raw_text:
+                                fields[name]['original_value'] = raw_text.split(':', 1)[1].strip()
                             break
     # Currency may appear beside an amount rather than under a label. No default is invented.
     if fields['currency']['normalized_value'] is None:

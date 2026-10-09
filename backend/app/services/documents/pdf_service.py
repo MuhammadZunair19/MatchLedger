@@ -27,15 +27,26 @@ def extract_pages(path, mime):
             warnings = []
             attempts = []
             if usable_text(text):
-                for block in page.get_text('dict', sort=True)['blocks']:
+                for block in page.get_text('rawdict', sort=False)['blocks']:
                     for line in block.get('lines', []):
                         for span in line.get('spans', []):
-                            if not span['text'].strip():
-                                continue
-                            x0, y0, x1, y1 = span['bbox']
-                            tokens.append({'text': span['text'], 'normalized': normalize_text(span['text']),
-                                'bbox': [x0/page.rect.width, y0/page.rect.height, x1/page.rect.width, y1/page.rect.height],
-                                'confidence': None, 'method': 'pdf_text'})
+                            chunks = []
+                            for char in span.get('chars', []):
+                                box = char['bbox']
+                                if chunks:
+                                    previous = chunks[-1][-1]['bbox']
+                                    gap = max(box[0]-previous[2], previous[0]-box[2])
+                                    if gap > (box[3]-box[1])*0.65: chunks.append([])
+                                else: chunks.append([])
+                                chunks[-1].append(char)
+                            for chunk in chunks:
+                                original = ''.join(c['c'] for c in chunk)
+                                if not original.strip(): continue
+                                boxes = [c['bbox'] for c in chunk]
+                                x0, y0, x1, y1 = min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes)
+                                tokens.append({'text': original, 'normalized': normalize_text(original), 'reading_order': len(tokens),
+                                    'bbox': [x0/page.rect.width, y0/page.rect.height, x1/page.rect.width, y1/page.rect.height],
+                                    'confidence': None, 'method': 'pdf_text'})
             else:
                 scale = min(settings.ocr_dpi/72, (settings.max_image_pixels / max(1, page.rect.width*page.rect.height)) ** 0.5)
                 pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False, colorspace=pymupdf.csRGB, annots=False)

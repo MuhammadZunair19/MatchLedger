@@ -1,5 +1,4 @@
 """PaddleOCR 3.x adapter. Confidence comes only from the recognizer."""
-import re
 from functools import lru_cache
 from ...config import settings
 from .normalization_service import normalize_text
