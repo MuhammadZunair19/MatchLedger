@@ -1,0 +1,18 @@
+@import "tailwindcss";
+:root { --background: #f6f8fa; --foreground: #152b3a; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: Arial, Helvetica, sans-serif; font-size: 14px; }
+button, a, select { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #dbe2e8; border-radius: 7px; background: white; color: #203344; font: inherit; }
+input:focus, select:focus, textarea:focus { outline: 2px solid #0f766e; outline-offset: 1px; }
+label { display: block; font-size: 12px; font-weight: 600; color: #526373; }
+label input, label select, label textarea { margin-top: 6px; font-weight: 400; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #73818d; background: #fafbfc; padding: 15px 22px; }
+td { padding: 18px 22px; border-top: 1px solid #edf0f3; font-size: 13px; }
+dialog { margin: auto; border: 0; border-radius: 16px; width: min(900px, 95vw); max-height: 90vh; padding: 0; box-shadow: 0 30px 100px #0f23334d; }
+dialog::backdrop { background: #10233280; backdrop-filter: blur(3px); }
+.card { border: 1px solid #e3e8ed; background: white; border-radius: 12px; }
+.eyebrow { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .16em; }
+@media (max-height: 800px) { .sidebar-tip { display: none; } }
