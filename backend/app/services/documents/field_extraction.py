@@ -20,7 +20,7 @@ COMMON = {
 STRATEGIES = {
     'purchase_order': {'number': ['Purchase order number', 'PO number', 'PO no', 'رقم أمر الشراء', 'رقم امر الشراء'],
         'date': ['Order date', 'PO date', 'تاريخ الطلب', 'تاريخ أمر الشراء'],
-        'expected_delivery_date': ['Expected delivery date', 'تاريخ التسليم المتوقع']},
+        'expected_delivery_date': ['Expected delivery date', 'Expected delivery', 'تاريخ التسليم المتوقع']},
     'supplier_invoice': {'number': ['Invoice number', 'Invoice no', 'Invoice #', 'رقم الفاتورة'],
         'date': ['Invoice date', 'تاريخ الفاتورة'], 'due_date': ['Due date', 'تاريخ الاستحقاق']},
     'goods_receipt': {'number': ['Delivery note number', 'Delivery note no', 'Receipt number', 'DN number', 'رقم إشعار التسليم', 'رقم سند التسليم', 'رقم الاستلام'],
@@ -32,6 +32,8 @@ DATE_FIELDS = {'date', 'due_date', 'expected_delivery_date'}
 
 def field(value=None, token=None, page=None, name=None, method=None):
     normalized = normalize_text(value) if value is not None else None
+    if normalized is not None:
+        normalized = normalized.strip().strip(':：').strip()
     uncertainty = token.get('uncertainty') if token else None
     if name in MONEY_FIELDS:
         normalized = decimal_value(value)
@@ -63,6 +65,48 @@ def row_groups(tokens):
     return [sorted(r, key=lambda t: (t.get('bbox') or [0])[0]) for r in rows]
 
 
+def field_tokens(tokens):
+    """Expose bilingual OCR alternatives to label extraction without duplicating table cells."""
+    expanded = []
+    for token in tokens:
+        expanded.append(token)
+        for alternative in token.get('alternatives', []):
+            expanded.append({**alternative, 'uncertainty': token.get('uncertainty')})
+    return expanded
+
+
+def paired_value(row, label):
+    """Pair exact labels with separate values on the same PDF text row."""
+    expected = normalize_text(label).casefold()
+    for index, token in enumerate(row):
+        candidate = normalize_text(token['text']).strip().rstrip(':：#-–—').strip().casefold()
+        if candidate != expected:
+            continue
+        values = [item for offset, item in enumerate(row)
+                  if offset != index and normalize_text(item['text']).strip()]
+        label_box = token.get('bbox')
+        if not values or not label_box or any(not item.get('bbox') for item in values):
+            continue
+        if all(item['bbox'][0] >= label_box[2] - 0.003 for item in values):
+            ordered = sorted(values, key=lambda item: item['bbox'][0])
+        elif all(item['bbox'][2] <= label_box[0] + 0.003 for item in values):
+            # A right-side Arabic label is followed visually by RTL value glyphs.
+            ordered = sorted(values, key=lambda item: item['bbox'][0], reverse=True)
+        elif all(max(abs(item['bbox'][offset] - label_box[offset]) for offset in range(4)) < 0.025
+                 for item in values):
+            # Two recognizers can return a label and its Latin/numeric value for the
+            # same detected box. Prefer the evidence containing the most digits.
+            ordered = [max(values, key=lambda item: (sum(char.isdigit() for char in item['text']),
+                                                      len(normalize_text(item['text']))))]
+        else:
+            continue
+        raw = ' '.join(item['text'] for item in ordered).strip()
+        normalized = re.sub(r'\s*-\s*', '-', normalize_text(raw))
+        if normalized:
+            return raw, normalized, token, values
+    return None
+
+
 def extract_fields(pages, document_type):
     aliases = {**COMMON, **STRATEGIES[document_type]}
     if settings.supplier_aliases_path:
@@ -71,16 +115,18 @@ def extract_fields(pages, document_type):
             if key in aliases and isinstance(values, list): aliases[key] = aliases[key] + values
     fields = {name: field(name=name) for name in aliases}
     for page in pages:
-        for row in row_groups(page['tokens']):
+        for row in row_groups(field_tokens(page['tokens'])):
             # Both text directions are considered, while preserving each span verbatim.
             for ordered in (sorted(row, key=lambda t: t.get('reading_order', 0)), row, list(reversed(row))):
                 raw_text = ' '.join(t['text'] for t in ordered)
                 text = normalize_text(raw_text)
                 text = re.sub(r'\s*-\s*', '-', text)
                 for name, names in aliases.items():
-                    if fields[name]['original_value'] is not None: continue
+                    if fields[name]['original_value'] is not None and (name not in MONEY_FIELDS | DATE_FIELDS | {'currency'}
+                                                                       or fields[name]['normalized_value'] is not None):
+                        continue
                     for label in sorted(names, key=len, reverse=True):
-                        match = re.match(r'^\s*' + re.escape(label) + r'\s*[:：#]\s*(.+?)\s*$', text, re.I)
+                        match = re.match(r'^\s*' + re.escape(label) + r'(?:\s*[:：#-]\s*|\s+|\S\s+)(.+?)\s*$', text, re.I)
                         if match:
                             token = dict(ordered[0])
                             boxes = [t['bbox'] for t in ordered if t.get('bbox')]
@@ -89,6 +135,18 @@ def extract_fields(pages, document_type):
                             fields[name]['source_text'] = raw_text
                             if ':' in raw_text:
                                 fields[name]['original_value'] = raw_text.split(':', 1)[1].strip()
+                            break
+                        pair = paired_value(row, label)
+                        if pair:
+                            original, normalized, label_token, value_tokens = pair
+                            token = dict(label_token)
+                            boxes = [item['bbox'] for item in [label_token, *value_tokens]]
+                            token['bbox'] = [min(box[0] for box in boxes), min(box[1] for box in boxes),
+                                             max(box[2] for box in boxes), max(box[3] for box in boxes)]
+                            fields[name] = field(normalized, token, page['number'], name,
+                                                 token.get('method', 'label') + ':label_pair')
+                            fields[name]['original_value'] = original
+                            fields[name]['source_text'] = ' '.join(item['text'] for item in row)
                             break
     # Currency may appear beside an amount rather than under a label. No default is invented.
     if fields['currency']['normalized_value'] is None:

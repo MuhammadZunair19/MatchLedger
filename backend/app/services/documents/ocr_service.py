@@ -39,6 +39,18 @@ def overlap(a, b):
     return intersection / max(0.000001, min((a[2]-a[0])*(a[3]-a[1]), (b[2]-b[0])*(b[3]-b[1])))
 
 
+def has_arabic(text):
+    return any('\u0600' <= char <= '\u06ff' for char in text)
+
+
+def prefer(candidate, existing):
+    """Prefer actual Arabic script over Latin guesses for the same detected region."""
+    candidate_ar, existing_ar = has_arabic(candidate['text']), has_arabic(existing['text'])
+    if candidate_ar != existing_ar:
+        return candidate_ar
+    return (candidate.get('confidence') or 0) > (existing.get('confidence') or 0)
+
+
 def recognize(image):
     variants, warnings = candidates(image)
     attempts = []
@@ -57,12 +69,27 @@ def recognize(image):
             if existing is None:
                 selected.append(dict(token))
             else:
-                existing.setdefault('alternatives', []).append(token)
+                if prefer(token, existing):
+                    replacement = dict(token)
+                    replacement['alternatives'] = [
+                        {key: value for key, value in existing.items() if key != 'alternatives'},
+                        *existing.get('alternatives', []),
+                    ]
+                    selected[selected.index(existing)] = replacement
+                    existing = replacement
+                else:
+                    existing.setdefault('alternatives', []).append(token)
                 if normalize_text(token['text']) != normalize_text(existing['text']) and (token['confidence'] or 0) > 0.7:
                     existing['uncertainty'] = 'Bilingual recognizers disagree; inspect the source'
         quality = sum(t['confidence'] or 0 for t in selected) / max(1, len(selected))
         attempts.append({'variant': variant, 'tokens': selected, 'quality': quality})
-    best = max(attempts, key=lambda a: a['quality'])
+    original = attempts[0]
+    contender = max(attempts, key=lambda a: a['quality'])
+    # Enhancements must show a material confidence gain without losing coverage.
+    # Clean white documents can have a low global contrast statistic even when the
+    # original glyphs are clearer than CLAHE output.
+    best = contender if (contender is not original and contender['quality'] >= original['quality'] + 0.05
+                         and len(contender['tokens']) >= len(original['tokens']) * 0.8) else original
     tokens = sorted(best['tokens'], key=lambda t: (t['bbox'][1] if t['bbox'] else 0, t['bbox'][0] if t['bbox'] else 0))
     if best['quality'] < 0.85 or any(t.get('uncertainty') for t in tokens):
         warnings.append('OCR uncertainty: verify recognized text against the original.')

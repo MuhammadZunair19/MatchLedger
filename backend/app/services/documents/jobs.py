@@ -72,7 +72,7 @@ def process_document(organization_id, document_id, extraction_id):
         run.raw_pages = result['pages']; run.extracted_data = result['data']; run.warnings = result['warnings']
         run.status = doc.status = 'REVIEW_REQUIRED'; run.completed_at = now(); doc.last_error = None
         doc.detected_languages = result['languages']
-        if doc.review_data is None:
+        if doc.review_data is None or (doc.review_revision == 0 and doc.reviewed_at is None):
             doc.review_data = review_from_extraction(result['data'], run.id)
         else:
             run.warnings = [*run.warnings, 'Previous review values retained. New extraction evidence is available in history.']

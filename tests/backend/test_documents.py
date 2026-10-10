@@ -1,19 +1,28 @@
 from datetime import timedelta
 from pathlib import Path
+
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-from app.main import app
-from app.config import settings
 from app import models as m
+from app.config import settings
+from app.main import app
 from app.services.documents import jobs
-from app.services.documents.storage_service import LocalStorage
-from app.services.documents.normalization_service import normalize_text, decimal_value, currency_value, date_value
+from app.services.documents.extraction_orchestrator import (
+    extract_document,
+    review_from_extraction,
+)
+from app.services.documents.field_extraction import extract_fields
+from app.services.documents.normalization_service import (
+    currency_value,
+    date_value,
+    decimal_value,
+    normalize_text,
+)
 from app.services.documents.ocr_service import normalize_output
-from app.services.documents.extraction_orchestrator import extract_document, review_from_extraction
-from app.services.documents.validation_service import validate_review
 from app.services.documents.ollama_service import assist
+from app.services.documents.storage_service import LocalStorage
+from app.services.documents.validation_service import validate_review
 from conftest import register
+from fastapi.testclient import TestClient
 
 FIXTURES = Path(__file__).resolve().parents[2] / 'sample_data' / 'documents'
 
@@ -63,6 +72,17 @@ def test_dates():
     assert date_value('10/09/2026','UNKNOWN')[0] is None
     assert date_value('1448/01/01 هـ')[0] is None
     assert date_value('31/02/2026')[0] is None
+
+
+def test_separate_pdf_label_value_spans_in_ltr_and_rtl():
+    def token(text, left, right):
+        return {'text': text, 'normalized': normalize_text(text), 'bbox': [left, .1, right, .12],
+                'confidence': None, 'method': 'pdf_text', 'reading_order': 0}
+    english = {'number': 1, 'tokens': [token('PO number', .1, .22), token('PO-DEMO-001', .35, .52)]}
+    arabic = {'number': 1, 'tokens': [token('09', .60, .64), token('-', .64, .65), token('10', .65, .69),
+                                      token('-', .69, .70), token('2026', .70, .76), token('تاريخ الطلب:', .77, .92)]}
+    assert extract_fields([english], 'purchase_order')['number']['normalized_value'] == 'PO-DEMO-001'
+    assert extract_fields([arabic], 'purchase_order')['date']['normalized_value'] == '2026-10-09'
 
 
 def test_ocr_adapter_does_not_invent_confidence():
@@ -167,6 +187,15 @@ def test_review_confirm_and_reextract(client,auth,documents,database):
     assert any(c['field_path']=='fields.number' and c['created_by']==auth['user']['id'] for c in changes)
     assert client.delete(f'/api/documents/{doc["id"]}').status_code == 204
     assert client.get('/api/purchase-orders').json()['total'] == 1
+
+
+def test_reextract_refreshes_an_unreviewed_generated_draft(client, auth, documents):
+    doc = upload(client)
+    first = process(client, documents, doc)
+    second = process(client, documents, doc)
+    assert second['latest']['id'] != first['latest']['id']
+    assert second['review_revision'] == 0
+    assert second['review_data']['extraction_id'] == second['latest']['id']
 
 
 @pytest.mark.parametrize('name,kind,resource',[('invoice_en.pdf','supplier_invoice','invoices'),('delivery_note_en.pdf','goods_receipt','receipts')])

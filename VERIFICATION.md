@@ -33,3 +33,9 @@ Those checks established the Milestone 1 baseline. They do not establish correct
 - Docker Compose shutdown was attempted at handoff. Docker Desktop's Linux engine pipe was unavailable; no running stack could be inspected through Docker at that point. No development services were restarted.
 
 Run the commands in `docs/MILESTONE2.md` to validate this handoff. Milestone 2 is implemented in source but needs final regression and end-to-end verification; readiness for Milestone 3 is conditional on those results. No production-readiness claim is made.
+
+### Arabic and split-label follow-up
+
+After manual review exposed blank fields on PDFs that render labels and values as separate spans, extraction was updated to pair same-row LTR/RTL evidence and to expose bilingual OCR alternatives to field recognition. The two retained demo PDFs now extract their number, date, supplier, currency, totals and line price without validation warnings. Native English/Arabic regression selection passed: 8 tests in 0.24 seconds.
+
+The strengthened real Arabic raster test passed in 94.36 seconds on CPU. It now requires an Arabic supplier name, invoice/date evidence, SAR, due date, Arabic line description, unit price and line total. OCR can still omit or confuse individual characters and quantities; these stay uncertain/missing for human review rather than being inferred. Ruff passed on backend and document/OCR tests. API tests requiring a new Starlette TestClient later stalled while Windows created its internal socket pair; they were interrupted and no application service was left running.

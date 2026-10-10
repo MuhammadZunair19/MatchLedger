@@ -1,6 +1,7 @@
 """Explicit model-download integration suite: RUN_OCR_TESTS=1 pytest tests/ocr -v."""
 import os
 from pathlib import Path
+
 import pytest
 from app.services.documents.extraction_orchestrator import extract_document
 
@@ -30,3 +31,13 @@ def test_arabic_raster(tmp_path):
     assert 'ar' in result['languages']
     assert any('paddleocr' in token['method'] for p in result['pages'] for token in p['tokens'])
     assert any('\u0600' <= c <= '\u06ff' for p in result['pages'] for c in p['text'])
+    fields=result['data']['fields']
+    assert fields['number']['normalized_value']
+    assert fields['number']['normalized_value'].endswith('-2026-001')
+    assert fields['date']['normalized_value']=='2026-10-09'
+    assert fields['supplier_name']['normalized_value']=='شركة النور للكابلات'
+    assert fields['currency']['normalized_value']=='SAR'
+    assert fields['due_date']['normalized_value']=='2026-11-08'
+    assert any('لفات كابلات كهربائية' in (line['fields']['description']['normalized_value'] or '') for line in result['data']['lines'])
+    assert any(line['fields']['unit_price']['normalized_value']=='55.00' for line in result['data']['lines'])
+    assert any(line['fields']['line_total']['normalized_value']=='5500.00' for line in result['data']['lines'])
