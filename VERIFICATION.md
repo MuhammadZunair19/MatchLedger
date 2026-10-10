@@ -20,4 +20,16 @@ Docker Desktop's log reported failure to initialize its Secrets Engine because i
 
 An installed Starlette dependency emits a test-client deprecation warning about its future HTTP client migration; tests pass. Turbopack crashed while spawning its CSS processing subprocess; using Next's supported webpack mode resolved the build.
 
-OCR, AI extraction, document upload and matching execution are intentionally outside this milestone. No production-readiness claim is made.
+Those checks established the Milestone 1 baseline. They do not establish correctness of the new document workflows.
+
+## Milestone 2 verification record — October 10, 2026
+
+- The existing 16 backend regression tests passed after adding the document schema and migration. The final document changes and newly added document tests were not rerun.
+- The second migration was applied successfully to the local PostgreSQL database. Earlier schema migration round-trip checks ran on SQLite; final rollback remains to be checked on PostgreSQL.
+- Native extraction was exercised on English, Arabic, bilingual and multipage synthetic PDFs. Font mapping and Arabic column handling issues were repaired. The final Arabic numeric fixture adjustment has not been rerun through extraction.
+- Real PaddleOCR 3.7 / PaddlePaddle 3.3.1 CPU models downloaded and loaded. A scanned English image produced actual OCR tokens, confidence and structured header evidence. OCR merged description and quantity in one box; a conservative, explicitly uncertain splitting repair was added afterward and remains unverified. Arabic image OCR and low-quality fixtures still need the dedicated OCR suite.
+- Backend Ruff checks passed before the final small edits. Final frontend typecheck, lint/build, document browser workflows, full container build and document test counts have not been verified.
+- A document test command was rejected by automatic approval review because of an account usage limit, before execution. The user subsequently requested source completion and chose to run the application/tests themselves. No further runtime tests were run.
+- Docker Compose shutdown was attempted at handoff. Docker Desktop's Linux engine pipe was unavailable; no running stack could be inspected through Docker at that point. No development services were restarted.
+
+Run the commands in `docs/MILESTONE2.md` to validate this handoff. Milestone 2 is implemented in source but needs final regression and end-to-end verification; readiness for Milestone 3 is conditional on those results. No production-readiness claim is made.

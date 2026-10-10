@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Download, ScanText, Save, CheckCircle2, Plus, Trash2, Crosshair, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Download, ScanText, Save, CheckCircle2, Plus, Trash2, Crosshair, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Auth, RecordRow, api, allRecords } from '@/lib/api';
 import { DocumentRow, Evidence, ExtractionResponse, ReviewData, ReviewLine, documentTypes, pretty } from '@/lib/documents';
 import { Button } from './ui/button';

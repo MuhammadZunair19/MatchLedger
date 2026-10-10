@@ -3,6 +3,8 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from ... import models as m, schemas as s
 from .validation_service import validate_review
+from .normalization_service import decimal_value, currency_value, date_value
+from ...config import settings
 
 
 def flatten(data):
@@ -55,12 +57,12 @@ def confirm(db, doc, request, ctx):
     kind = doc.document_type
     lines = []
     for line in data['lines']:
-        values = {k: line.get(k) for k in ('description', 'quantity')}
-        if kind != 'goods_receipt': values['unit_price'] = line.get('unit_price')
+        values = {'description': line.get('description'), 'quantity': decimal_value(line.get('quantity'))}
+        if kind != 'goods_receipt': values['unit_price'] = decimal_value(line.get('unit_price'))
         if kind != 'purchase_order': values['purchase_order_line_id'] = line.get('purchase_order_line_id')
         lines.append(values)
-    values = {'supplier_id': supplier_id, 'number': fields.get('number'), 'date': fields.get('date'), 'notes': fields.get('notes'), 'lines': lines}
-    if kind != 'goods_receipt': values['currency'] = fields.get('currency')
+    values = {'supplier_id': supplier_id, 'number': fields.get('number'), 'date': date_value(fields.get('date'), settings.date_order)[0], 'notes': fields.get('notes'), 'lines': lines}
+    if kind != 'goods_receipt': values['currency'] = currency_value(fields.get('currency'))
     if kind != 'purchase_order': values['purchase_order_id'] = data.get('purchase_order_id')
     specs = {'purchase_order': (s.POInput, m.PurchaseOrder, m.PurchaseOrderLine),
         'supplier_invoice': (s.InvoiceInput, m.SupplierInvoice, m.SupplierInvoiceLine), 'goods_receipt': (s.ReceiptInput, m.GoodsReceipt, m.GoodsReceiptLine)}

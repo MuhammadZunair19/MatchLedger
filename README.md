@@ -1,4 +1,4 @@
-# MatchLedger — Milestone 1
+# MatchLedger — Milestones 1 and 2
 
 A multi-tenant procurement workspace for suppliers, purchase orders, goods receipts and supplier invoices. Next.js App Router, TypeScript, Tailwind CSS and shadcn-style UI primitives; FastAPI, SQLAlchemy, Pydantic and PostgreSQL. This is a development milestone, not a production-ready product.
 
@@ -10,6 +10,7 @@ A multi-tenant procurement workspace for suppliers, purchase orders, goods recei
 - Organization filters on resource reads/writes; composite organization foreign keys prevent cross-tenant parent/child references. Supplier, PO, and PO-line consistency is also validated. Foreign IDs return 404. Authentication users are global identities connected through memberships; procurement records are tenant scoped.
 - Organization, User, Membership, Session, Supplier, PurchaseOrder/Line, GoodsReceipt/Line, SupplierInvoice/Line, Document, MatchRun, MatchFinding and AuditEvent tables.
 - PostgreSQL Alembic migration, deterministic sample seed, pytest tests and a real-browser Playwright workflow.
+- Private PDF/JPG/PNG uploads, native PDF text extraction, real PaddleOCR English/Arabic extraction in an RQ worker, source evidence and editable human review. Confirmation creates a new procurement record transactionally. See [Milestone 2 setup and manual guide](docs/MILESTONE2.md).
 
 ## Start with Docker (Windows PowerShell)
 
@@ -51,22 +52,31 @@ Refresh the overview. The seed creates Riyadh Electrical Supplies, `PO-2026-001`
 
 ## Local development without application containers
 
-Requires Python 3.12+, Node.js 22+ and a running PostgreSQL database. Start only the Compose database after preparing `.env` above:
+Requires Python 3.12+, Node.js 22+, PostgreSQL and Redis. Start the infrastructure after preparing `.env` above:
 
 ```powershell
-docker compose up -d db
+docker compose up -d db redis
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -r backend/requirements.lock
+.\.venv\Scripts\python -m pip install -r backend/requirements.txt -r backend/requirements-ocr.txt
 # Read the generated URL-safe password from your local .env.
 $dbPassword = ((Get-Content .env | Where-Object { $_ -match '^POSTGRES_PASSWORD=' }) -split '=', 2)[1]
-$env:DATABASE_URL = "postgresql+psycopg://matchledger:${dbPassword}@localhost:5432/matchledger"
+$env:DATABASE_URL = "postgresql+psycopg://matchledger:${dbPassword}@127.0.0.1:5432/matchledger"
 $env:APP_ORIGIN = 'http://localhost:3000'
 Set-Location backend
 ..\.venv\Scripts\python -m alembic upgrade head
 ..\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
 ```
 
-In another PowerShell window:
+In another PowerShell window, start the worker with the same `DATABASE_URL` environment variable (or put its real private value in `backend/.env`):
+
+```powershell
+Set-Location D:\ocr\backend
+$env:REDIS_URL = 'redis://127.0.0.1:6379/0'
+$env:PADDLE_PDX_CACHE_HOME = 'D:\ocr\.paddlex'
+..\.venv\Scripts\python -m app.worker
+```
+
+In a third PowerShell window:
 
 ```powershell
 Set-Location D:\ocr\frontend
@@ -123,8 +133,8 @@ Receipts and invoices require a purchase order and unique references to its line
 
 ## Boundaries and follow-up work
 
-OCR, AI extraction, document uploads, matching execution, VAT calculations, currency conversion, payment tracking and approval workflows are deliberately absent. Document/MatchRun/MatchFinding tables and Python protocols prepare the next milestones. Before exposing uploads, implement allowlisted MIME types, magic-byte validation, byte-size limits and tenant-scoped storage authorization.
+Matching execution, currency conversion, payment tracking and approval workflows remain outside this milestone. Uploaded VAT, discounts, SKU and unit evidence are retained in extraction and reviewed document JSON; existing business amounts still exclude VAT. No matching verdict is calculated. Document uploads validate extension, declared MIME, actual content, byte size, page count and pixel count. Source files are private and previews are authenticated raster images. Malware scanning is not included.
 
-Production hardening still requires deployment review, HTTPS, managed secrets, login rate limiting, password recovery/email verification, operational monitoring, backups, dependency review and load testing. Session cleanup should periodically delete expired rows. Database row-level security is not enabled; tenant isolation is enforced by application queries and composite foreign keys, so direct SQL access must remain restricted. Concurrent edits currently use last-write-wins semantics. The UI is a single App Router workspace with client-side screen navigation.
+Production hardening still requires deployment review, HTTPS, managed secrets, login rate limiting, password recovery/email verification, operational monitoring, backups, dependency review and load testing. Session cleanup should periodically delete expired rows. Database row-level security is not enabled; tenant isolation is enforced by application queries and composite foreign keys, so direct SQL access must remain restricted. Document reviews use revision checks; existing business CRUD uses last-write-wins semantics.
 
 See `VERIFICATION.md` for checks actually executed in the implementation environment.

@@ -1,0 +1,37 @@
+import { test, expect } from '../../frontend/node_modules/@playwright/test';
+import path from 'node:path';
+
+test('private PO upload, real extraction, saved correction and confirmation', async ({ page }) => {
+  test.setTimeout(120_000);
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create workspace', exact: true }).click();
+  await page.getByLabel('Full name').fill('Document Reviewer');
+  await page.getByLabel('Organization name').fill(`Document QA ${suffix}`);
+  await page.getByLabel('Email address').fill(`documents-${suffix}@example.com`);
+  await page.getByLabel('Password', { exact: true }).fill('test-only-password-123');
+  await page.getByRole('button', { name: 'Create workspace', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Procurement overview' })).toBeVisible();
+  await page.getByRole('navigation').getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByRole('link', { name: 'Upload documents', exact: true }).click();
+  await page.getByLabel('Document type').selectOption('purchase_order');
+  await page.getByLabel('Upload files').setInputFiles(path.resolve(__dirname, '../../sample_data/documents/purchase_order_en.pdf'));
+  await page.getByRole('table').getByRole('link', { name: 'purchase_order_en.pdf', exact: true }).click();
+  await page.getByRole('button', { name: 'Start extraction', exact: true }).click();
+  await expect(page.getByLabel('Line 1 Quantity', { exact: true })).toHaveValue('100', { timeout: 90_000 });
+  await expect(page.getByLabel('Line 1 Unit price', { exact: true })).toHaveValue('50.00');
+  const reference = `PO-DOC-${suffix}`;
+  await page.locator('#field-number').fill(reference);
+  await page.getByLabel('Create a supplier using the reviewed supplier name on confirmation', { exact: true }).check();
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('#field-number')).toHaveValue(reference);
+  await page.getByLabel('Create a supplier using the reviewed supplier name on confirmation', { exact: true }).check();
+  await page.getByLabel('I checked the source and acknowledge any extraction or arithmetic warnings.', { exact: true }).check();
+  await page.getByRole('button', { name: 'Confirm extraction', exact: true }).click();
+  await expect(page.getByText('Verified and saved', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm extraction', exact: true })).toHaveCount(0);
+  await page.getByRole('navigation').getByRole('button', { name: 'Purchase orders', exact: true }).click();
+  await expect(page.getByRole('table')).toContainText(reference);
+  await expect(page.getByRole('table')).toContainText('SAR 5,000.00');
+});

@@ -1,8 +1,8 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { UploadCloud, FileText, Search, ArrowRight, Trash2, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { UploadCloud, FileText, Search, ArrowRight, Trash2 } from 'lucide-react';
 import { Auth, api } from '@/lib/api';
 import { DocumentRow, documentTypes, statuses, pretty, uploadDocument } from '@/lib/documents';
 import { Button } from './ui/button';
@@ -14,7 +14,7 @@ export function StatusBadge({ value }: { value: string }) {
 }
 
 export default function DocumentWorkspace({ auth }: { auth: Auth }) {
-  const path = usePathname(); const router = useRouter();
+  const path = usePathname();
   const parts = path.split('/').filter(Boolean); const id = parts[1] && parts[1] !== 'upload' ? parts[1] : null;
   const uploading = parts[1] === 'upload';
   const [rows, setRows] = useState<DocumentRow[]>([]); const [total, setTotal] = useState(0); const [page, setPage] = useState(1);
