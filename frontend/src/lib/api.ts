@@ -25,3 +25,11 @@ export async function allRecords(path: string) {
     page++;
   }
 }
+export function downloadExport(id: string) {
+  const link = document.createElement('a');
+  link.href = `/api/reports/exports/${encodeURIComponent(id)}/download`;
+  link.download = '';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}

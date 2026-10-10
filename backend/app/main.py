@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session as DBSession
 from .db import get_db
 from .config import settings
 from . import models as m, schemas as s
-from .security import current, Context, owner, passwords, DUMMY_HASH, issue_session, COOKIE
+from .security import current, Context, owner, passwords, DUMMY_HASH, issue_session, COOKIE, require_permission
+from .request_context import request_id as active_request_id, request_id_var
 
 app = FastAPI(title='MatchLedger', version='0.1.0')
 log = logging.getLogger('matchledger')
@@ -25,14 +26,18 @@ async def safety(request: Request, call_next):
             return JSONResponse({'error': {'code': '413', 'message': 'Upload exceeds the size limit or has no Content-Length'}}, status_code=413)
     if request.method not in ('GET', 'HEAD', 'OPTIONS') and request.headers.get('origin') not in (None, settings.app_origin):
         return JSONResponse({'error': {'code': '403', 'message': 'Origin is not allowed'}}, status_code=403)
+    request_token = request_id_var.set(request_id)
     try:
-        response = await call_next(request)
-    except Exception as exc:
-        if request.url.path.startswith('/api/documents'):
-            log.error('Document request %s failed (%s)', request_id, type(exc).__name__)
-        else:
-            log.exception('Unhandled request %s', request_id)
-        response = JSONResponse({'error': {'code': '500', 'message': 'Unexpected server error', 'request_id': request_id}}, status_code=500)
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            if request.url.path.startswith('/api/documents'):
+                log.error('Document request %s failed (%s)', request_id, type(exc).__name__)
+            else:
+                log.exception('Unhandled request %s', request_id)
+            response = JSONResponse({'error': {'code': '500', 'message': 'Unexpected server error', 'request_id': request_id}}, status_code=500)
+    finally:
+        request_id_var.reset(request_token)
     response.headers['X-Request-ID'] = request_id
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Cache-Control'] = 'no-store'
@@ -71,7 +76,7 @@ def get_record(db, model, id, ctx, lock=False):
 
 def audit(db, ctx, action, row):
     db.add(m.AuditEvent(organization_id=ctx.org, created_by=ctx.user.id, updated_by=ctx.user.id,
-                        action=action, entity_type=row.__tablename__, entity_id=row.id))
+                        action=action, entity_type=row.__tablename__, entity_id=row.id, request_id=active_request_id()))
 
 
 def public(row):
@@ -150,7 +155,7 @@ def switch_org(data: s.SwitchOrganization, ctx: Context = Depends(current), db: 
 @app.get('/api/members')
 def members(ctx: Context = Depends(current), db: DBSession = Depends(get_db)):
     rows = db.execute(select(m.Membership, m.User).join(m.User).where(m.Membership.organization_id == ctx.org)).all()
-    return [{'id': mem.id, 'name': user.name, 'email': user.email, 'role': mem.role} for mem, user in rows]
+    return [{'id': mem.id, 'user_id': user.id, 'name': user.name, 'email': user.email, 'role': mem.role} for mem, user in rows]
 
 
 @app.post('/api/members', status_code=201)
@@ -159,9 +164,25 @@ def add_member(data: s.MemberInput, ctx: Context = Depends(current), db: DBSessi
     user = db.scalar(select(m.User).where(m.User.email == str(data.email).lower()))
     if not user:
         raise HTTPException(404, 'Ask this colleague to register first, then add their email here')
-    row = m.Membership(user_id=user.id, organization_id=ctx.org, role='member')
+    row = m.Membership(user_id=user.id, organization_id=ctx.org, role=data.role)
     db.add(row); db.flush(); audit(db, ctx, 'add_member', row); db.commit()
-    return {'id': row.id, 'name': user.name, 'email': user.email, 'role': row.role}
+    return {'id': row.id, 'user_id': user.id, 'name': user.name, 'email': user.email, 'role': row.role}
+
+
+@app.put('/api/members/{id}/role')
+def update_member_role(id: str, data: s.MemberRoleInput, ctx: Context = Depends(current), db: DBSession = Depends(get_db)):
+    owner(ctx)
+    row = get_record(db, m.Membership, id, ctx, lock=True)
+    if row.role == 'owner':
+        raise HTTPException(409, 'The organization owner role cannot be changed')
+    old = row.role; row.role = data.role; row.updated_at = m.now()
+    db.add(m.AuditEvent(organization_id=ctx.org, created_by=ctx.user.id, updated_by=ctx.user.id,
+        action='member_role_changed', entity_type='memberships', entity_id=row.id,
+        old_state={'role': old}, new_state={'role': row.role}, request_id=active_request_id()))
+    db.execute(delete(m.Session).where(m.Session.organization_id == ctx.org, m.Session.user_id == row.user_id))
+    db.commit()
+    user = db.get(m.User, row.user_id)
+    return {'id': row.id, 'user_id': user.id, 'name': user.name, 'email': user.email, 'role': row.role}
 
 
 @app.delete('/api/members/{id}', status_code=204)
@@ -218,6 +239,7 @@ def validate_links(db, data, ctx):
 def register_resource(path, model, line_model, input_schema):
     def listing(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), q: str = Query('', max_length=100),
                 ctx: Context = Depends(current), db: DBSession = Depends(get_db)):
+        require_permission(ctx, 'view')
         query = scoped(model, ctx)
         if q:
             column = model.name if model == m.Supplier else model.number
@@ -227,9 +249,11 @@ def register_resource(path, model, line_model, input_schema):
         return {'items': [serialize(db, row, line_model, ctx) for row in rows], 'total': count, 'page': page, 'page_size': page_size}
 
     def detail(id: str, ctx: Context = Depends(current), db: DBSession = Depends(get_db)):
+        require_permission(ctx, 'view')
         return serialize(db, get_record(db, model, id, ctx), line_model, ctx)
 
     def write(data, ctx, db, id=None):
+        require_permission(ctx, 'review')
         row = get_record(db, model, id, ctx, lock=True) if id else model(organization_id=ctx.org, created_by=ctx.user.id)
         if id and model == m.PurchaseOrder:
             for dependent in (m.GoodsReceipt, m.SupplierInvoice):
@@ -258,6 +282,7 @@ def register_resource(path, model, line_model, input_schema):
         return write(data, ctx, db, id)
 
     def remove(id: str, ctx: Context = Depends(current), db: DBSession = Depends(get_db)):
+        require_permission(ctx, 'review')
         row = get_record(db, model, id, ctx, lock=True)
         audit(db, ctx, 'delete', row)
         db.delete(row); db.commit()
@@ -274,6 +299,7 @@ for path, spec in RESOURCES.items():
 
 @app.get('/api/dashboard')
 def dashboard(ctx: Context = Depends(current), db: DBSession = Depends(get_db)):
+    require_permission(ctx, 'view')
     counts = {path: db.scalar(select(func.count()).select_from(scoped(spec[0], ctx).subquery())) for path, spec in RESOURCES.items()}
     totals = {}
     for row in db.scalars(scoped(m.SupplierInvoice, ctx)):
@@ -287,3 +313,9 @@ from .document_routes import router as document_router
 app.include_router(document_router)
 from .matching_routes import router as matching_router
 app.include_router(matching_router)
+from .review_routes import router as review_router
+app.include_router(review_router)
+from .approval_routes import router as approval_router
+app.include_router(approval_router)
+from .report_routes import router as report_router
+app.include_router(report_router)

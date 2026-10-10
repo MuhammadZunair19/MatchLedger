@@ -129,7 +129,10 @@ def run_match(snapshot, settings, mode, approved=None):
                 f"Grand total {invoice['grand_total']} does not equal subtotal minus discount plus tax ({money(expected_total)} {currency}).",
                 expected=expected_total, actual=invoice['grand_total'], difference=decimal(invoice['grand_total'])-expected_total,
                 unit=currency, tolerance={'absolute': str(total_tolerance)}))
-    if invoice.get('due_date') and invoice.get('date') and date.fromisoformat(invoice['due_date']) < date.fromisoformat(invoice['date']):
+    if not invoice.get('due_date'):
+        findings.append(finding('MISSING_DUE_DATE', 'WARNING',
+            'The verified invoice has no due date. Review the source before approval scheduling.', review_required=True))
+    elif invoice.get('date') and date.fromisoformat(invoice['due_date']) < date.fromisoformat(invoice['date']):
         findings.append(finding('DUE_DATE_WARNING', 'WARNING', 'The due date precedes the invoice date; verify both source dates.',
             expected=invoice['date'], actual=invoice['due_date'], review_required=True))
     blocking = any(item['severity'] == 'BLOCKING' for item in findings)

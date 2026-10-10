@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     session_hours: int = Field(default=12, ge=1, le=168)
     redis_url: str = 'redis://localhost:6379/0'
     document_storage_path: str = '../private_documents'
+    report_storage_path: str = '../private_reports'
     max_upload_size_mb: int = Field(default=20, ge=1, le=100)
     max_document_pages: int = Field(default=30, ge=1, le=100)
     max_image_pixels: int = Field(default=25000000, ge=1000000, le=50000000)

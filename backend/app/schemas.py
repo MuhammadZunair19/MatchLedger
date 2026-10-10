@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP, localcontext
-from typing import Annotated
+from typing import Annotated, Literal
 import pycountry
 from pydantic import BaseModel, ConfigDict, Field, EmailStr, StringConstraints, field_validator
 
@@ -28,6 +28,11 @@ class Login(StrictModel):
 
 class MemberInput(StrictModel):
     email: EmailStr
+    role: Literal['member', 'organization_admin', 'procurement_reviewer', 'finance_approver', 'viewer'] = 'member'
+
+
+class MemberRoleInput(StrictModel):
+    role: Literal['member', 'organization_admin', 'procurement_reviewer', 'finance_approver', 'viewer']
 
 
 class SwitchOrganization(StrictModel):

@@ -54,3 +54,21 @@ The strengthened real Arabic raster test passed in 94.36 seconds on CPU. It now 
 The engine tests cover exact and fuzzy association behavior, multiple invoice lines to one PO line, reference normalization, tolerance boundaries, zero expected price, missing receipts, duplicate/supplier/currency/date findings, two-way behavior and the full three-way sample variance. The persistence tests verify historical reruns, structured findings, audit creation and cross-tenant invisibility.
 
 No application or worker service was left running. PostgreSQL, Docker Compose, frontend production build and Playwright should still be run by the tester before accepting deployment. This is a development milestone and is not production-ready.
+
+## Milestone 4 verification record — October 10, 2026
+
+| Check | Result |
+| --- | --- |
+| Milestone 4 service/report/demo tests | 6 passed |
+| Existing matching engine tests | 14 passed |
+| Existing matching persistence/tenant tests | 2 passed |
+| Alembic upgrade/downgrade | Passed on a fresh temporary SQLite database at head `d19f4a8c2b71` |
+| Frontend typecheck | Passed |
+| Frontend production build | Passed after clearing a stale generated `.next` directory locked by Windows |
+| PDF structural validation | Passed: generated report opened with PyMuPDF, contained two pages and required invoice/variance/approval text |
+| PDF visual validation | Passed: rendered page inspected at 1.6×; English/Arabic text, tables, spacing and footer were readable |
+| XLSX structural validation | Passed: opened with openpyxl, five expected worksheets present, identifiers preserved as text and money/quantity cells numeric |
+| Formula-injection regression | Passed for `=`, `+`, `-`, and `@` text prefixes |
+| Full FastAPI TestClient suite | Not completed on this Windows host: after 16 pure tests passed, the known CPython `socket.socketpair()` stall recurred before the first TestClient request; the process was interrupted |
+
+The new API integration suite covers assignment, comments, resolution, approval transitions, concurrent stale-version rejection, audit retrieval, real PDF/XLSX generation and authenticated downloads. It is committed for execution on Linux/Docker or another host where Starlette TestClient starts normally. PostgreSQL and Playwright remain tester-run checks. No API, frontend, worker, database or container service was left running. Milestone 4 remains a development milestone, not a production-readiness claim.

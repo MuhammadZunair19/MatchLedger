@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import String, Numeric, ForeignKey, ForeignKeyConstraint, UniqueConstraint, CheckConstraint, DateTime, JSON
+from sqlalchemy import String, Numeric, ForeignKey, ForeignKeyConstraint, UniqueConstraint, CheckConstraint, DateTime, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -43,8 +43,9 @@ class Membership(Identity, Base):
     __tablename__ = 'memberships'
     organization_id: Mapped[str] = mapped_column(ForeignKey('organizations.id'), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
-    role: Mapped[str] = mapped_column(String(16), default='member')
-    __table_args__ = (UniqueConstraint('organization_id', 'user_id'), CheckConstraint("role IN ('owner', 'member')"))
+    role: Mapped[str] = mapped_column(String(32), default='member')
+    __table_args__ = (UniqueConstraint('organization_id', 'user_id'),
+        CheckConstraint("role IN ('owner','member','organization_admin','procurement_reviewer','finance_approver','viewer')"))
 
 
 class Session(Identity, Base):
@@ -234,7 +235,8 @@ class MatchFinding(Tenant, Base):
     review_required: Mapped[bool] = mapped_column(default=False, server_default='false')
     resolution_status: Mapped[str] = mapped_column(String(24), default='OPEN', server_default='OPEN')
     detail: Mapped[dict] = mapped_column(JSON)
-    __table_args__ = (ForeignKeyConstraint(['organization_id', 'match_run_id'], ['match_runs.organization_id', 'match_runs.id'], ondelete='CASCADE'),)
+    __table_args__ = (UniqueConstraint('organization_id', 'id'),
+        ForeignKeyConstraint(['organization_id', 'match_run_id'], ['match_runs.organization_id', 'match_runs.id'], ondelete='CASCADE'))
 
 
 class MatchingSettings(Tenant, Base):
@@ -264,3 +266,83 @@ class AuditEvent(Tenant, Base):
     entity_type: Mapped[str] = mapped_column(String(80))
     entity_id: Mapped[str] = mapped_column(String(36))
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    old_state: Mapped[dict | None] = mapped_column(JSON)
+    new_state: Mapped[dict | None] = mapped_column(JSON)
+    reason: Mapped[str | None] = mapped_column(String(2000))
+    request_id: Mapped[str | None] = mapped_column(String(64))
+
+
+class ExceptionReview(Tenant, Base):
+    __tablename__ = 'exception_reviews'
+    match_finding_id: Mapped[str] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(32), default='OPEN', server_default='OPEN')
+    assigned_to: Mapped[str | None] = mapped_column(ForeignKey('users.id'))
+    resolution_type: Mapped[str | None] = mapped_column(String(40))
+    resolution_reason: Mapped[str | None] = mapped_column(String(2000))
+    resolved_by: Mapped[str | None] = mapped_column(ForeignKey('users.id'))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(default=1, server_default='1')
+    __table_args__ = (UniqueConstraint('organization_id', 'id'), UniqueConstraint('organization_id', 'match_finding_id'),
+        ForeignKeyConstraint(['organization_id', 'match_finding_id'], ['match_findings.organization_id', 'match_findings.id'], ondelete='CASCADE'))
+
+
+class InvoiceApproval(Tenant, Base):
+    __tablename__ = 'invoice_approvals'
+    invoice_id: Mapped[str] = mapped_column(String(36))
+    match_run_id: Mapped[str | None] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(32), default='DRAFT', server_default='DRAFT')
+    submitted_by: Mapped[str | None] = mapped_column(ForeignKey('users.id'))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(ForeignKey('users.id'))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str | None] = mapped_column(String(2000))
+    invoice_version: Mapped[str | None] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(default=1, server_default='1')
+    __table_args__ = (UniqueConstraint('organization_id', 'id'), UniqueConstraint('organization_id', 'invoice_id'),
+        ForeignKeyConstraint(['organization_id', 'invoice_id'], ['supplier_invoices.organization_id', 'supplier_invoices.id'], ondelete='CASCADE'),
+        ForeignKeyConstraint(['organization_id', 'match_run_id'], ['match_runs.organization_id', 'match_runs.id']))
+
+
+class ApprovalDecision(Tenant, Base):
+    __tablename__ = 'approval_decisions'
+    invoice_id: Mapped[str] = mapped_column(String(36))
+    match_run_id: Mapped[str | None] = mapped_column(String(36))
+    reviewer_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    decision: Mapped[str] = mapped_column(String(32))
+    reason: Mapped[str | None] = mapped_column(String(2000))
+    invoice_version: Mapped[str] = mapped_column(String(64))
+    match_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    overridden_findings: Mapped[list] = mapped_column(JSON, default=list, server_default='[]')
+    __table_args__ = (UniqueConstraint('organization_id', 'id'),
+        ForeignKeyConstraint(['organization_id', 'invoice_id'], ['supplier_invoices.organization_id', 'supplier_invoices.id'], ondelete='CASCADE'),
+        ForeignKeyConstraint(['organization_id', 'match_run_id'], ['match_runs.organization_id', 'match_runs.id']))
+
+
+class ReviewComment(Tenant, Base):
+    __tablename__ = 'review_comments'
+    entity_type: Mapped[str] = mapped_column(String(32))
+    entity_id: Mapped[str] = mapped_column(String(36))
+    author_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    body: Mapped[str] = mapped_column(String(4000))
+    __table_args__ = (Index('ix_review_comments_entity', 'organization_id', 'entity_type', 'entity_id'),)
+
+
+class ReviewPolicy(Tenant, Base):
+    __tablename__ = 'review_policies'
+    segregation_of_duties: Mapped[bool] = mapped_column(default=False, server_default='false')
+    __table_args__ = (UniqueConstraint('organization_id'), UniqueConstraint('organization_id', 'id'))
+
+
+class ReportExport(Tenant, Base):
+    __tablename__ = 'report_exports'
+    report_type: Mapped[str] = mapped_column(String(40))
+    related_entity_id: Mapped[str | None] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(20), default='PROCESSING', server_default='PROCESSING')
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    storage_key: Mapped[str | None] = mapped_column(String(500))
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    error: Mapped[str | None] = mapped_column(String(1000))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint('organization_id', 'id'),
+        Index('ix_report_exports_related', 'organization_id', 'report_type', 'related_entity_id'))

@@ -58,5 +58,20 @@ def current(request: Request, db: DBSession = Depends(get_db)):
 
 
 def owner(ctx: Context):
-    if ctx.membership.role != 'owner':
+    if ctx.membership.role not in ('owner', 'organization_admin'):
         raise HTTPException(403, 'Only an organization owner can manage members')
+
+
+ROLE_PERMISSIONS = {
+    'owner': {'admin', 'review', 'approve', 'view', 'export'},
+    'organization_admin': {'admin', 'review', 'approve', 'view', 'export'},
+    'member': {'review', 'view'},
+    'procurement_reviewer': {'review', 'view'},
+    'finance_approver': {'approve', 'view', 'export'},
+    'viewer': {'view', 'export'},
+}
+
+
+def require_permission(ctx: Context, permission: str):
+    if permission not in ROLE_PERMISSIONS.get(ctx.membership.role, set()):
+        raise HTTPException(403, f'{permission.replace("_", " ").title()} permission is required')

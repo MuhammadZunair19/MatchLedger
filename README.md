@@ -1,4 +1,4 @@
-# MatchLedger — Milestones 1–3
+# MatchLedger — Milestones 1–4
 
 A multi-tenant procurement workspace for suppliers, purchase orders, goods receipts and supplier invoices. Next.js App Router, TypeScript, Tailwind CSS and shadcn-style UI primitives; FastAPI, SQLAlchemy, Pydantic and PostgreSQL. This is a development milestone, not a production-ready product.
 
@@ -13,6 +13,8 @@ A multi-tenant procurement workspace for suppliers, purchase orders, goods recei
 - Private PDF/JPG/PNG uploads, native PDF text extraction, real PaddleOCR English/Arabic extraction in an RQ worker, source evidence and editable human review. Confirmation creates a new procurement record transactionally. See [Milestone 2 setup and manual guide](docs/MILESTONE2.md).
 - Separate verified invoice number, invoice date and due date fields for English, Arabic and bilingual evidence.
 - Deterministic Decimal-only two-way and three-way matching with organization tolerances, reviewable line suggestions, immutable history and structured findings. See [Milestone 3 guide](docs/MILESTONE3.md).
+- Persisted exception assignment, comments, resolution, escalation and authorized variance decisions; role-separated invoice review and finance approval with stale-match and blocking-finding guards.
+- Searchable audit state changes, real reporting metrics, Arabic-capable PDF reports, numeric XLSX workbooks, safe CSV exports and authenticated private downloads. See [Milestone 4 guide](docs/MILESTONE4.md).
 
 ## Start with Docker (Windows PowerShell)
 
@@ -48,6 +50,8 @@ Then in PowerShell:
 
 ```powershell
 docker compose exec backend python -m app.seed --organization-id YOUR_ORGANIZATION_ID
+# Optional extended scenarios A-H for exception, approval and reporting review:
+docker compose exec backend python -m app.seed_milestone4 --organization-id YOUR_ORGANIZATION_ID
 ```
 
 Refresh the overview. The seed creates Riyadh Electrical Supplies, `PO-2026-001` for 100 cable rolls × SAR 50 = SAR 5,000, `GR-2026-001` for 90 rolls and `INV-2026-001` for 100 × SAR 55 = SAR 5,500, excluding VAT. The seed is transactional and skips an organization where the sample PO reference already exists. It creates no users or credentials. See `sample_data/procurement.json`.
@@ -129,15 +133,17 @@ Use `PLAYWRIGHT_BASE_URL` to override http://localhost:3000. No endpoints are mo
 
 Authenticated mutations require the `X-CSRF-Token` returned by `/api/auth/me` or sign-in, together with the HttpOnly session cookie. Sessions contain a cryptographically random bearer token; only its SHA-256 digest is stored in the database. Passwords are Argon2-hashed. Sessions expire after 12 hours by default; logout deletes the current session and removing membership revokes that user's sessions for the organization. Cross-origin mutation requests are rejected. Local HTTP sets `COOKIE_SECURE=false`; HTTPS deployment requires `COOKIE_SECURE=true` and an exact `APP_ORIGIN`.
 
-Each organization has an owner; members can manage procurement records. Only owners manage membership, and the owner cannot be removed. Existing membership lists refresh at login/reload. To switch organizations, use the sidebar selector.
+Each organization has an owner. Organization admins manage membership and policy, procurement reviewers work exceptions and submit invoices, finance approvers make finance decisions, and viewers have read/report access. Generic members retain procurement review access for compatibility. The owner cannot be removed. Changing a role revokes that member's current organization sessions. To switch organizations, use the sidebar selector.
 
 Receipts and invoices require a purchase order. Multiple receipt or invoice lines may reference one PO line for split deliveries and charges. Invoice currency must match its PO at record creation. Quantities and prices may differ intentionally; the matching workspace evaluates those differences without mutating source records. A PO with linked receipts/invoices cannot be edited or deleted until those records are removed. Referenced suppliers cannot be deleted. Successful writes and their audit events commit together.
 
 Matching APIs are under `/api/matching`: settings GET/PUT, candidates GET, run list/detail/create and immutable rerun. Matching only reads verified business records in the active organization.
 
+Milestone 4 APIs are under `/api/exceptions`, `/api/approvals`, `/api/reviews/comments`, `/api/audit/events`, and `/api/reports`. Approval uses `DRAFT → PENDING_REVIEW → PENDING_APPROVAL → APPROVED`; rejection and change requests require a reason. Unresolved blocking findings and stale match snapshots prevent progression. Export downloads are authenticated and stored outside the public frontend.
+
 ## Boundaries and follow-up work
 
-Exchange-rate conversion, payment tracking, approval workflows, OCR auto-confirmation and automatic posting remain outside this milestone. Cross-currency matching produces a blocking finding; it never converts money. Document uploads validate extension, declared MIME, actual content, byte size, page count and pixel count. Source files are private and previews are authenticated raster images. Malware scanning is not included.
+Exchange-rate conversion, payment tracking, OCR auto-confirmation and automatic posting remain outside this milestone. An approved invoice is a review decision only; it never records or implies payment. Cross-currency matching produces a blocking finding; it never converts money. Document uploads validate extension, declared MIME, actual content, byte size, page count and pixel count. Source files are private and previews are authenticated raster images. Malware scanning is not included.
 
 Production hardening still requires deployment review, HTTPS, managed secrets, login rate limiting, password recovery/email verification, operational monitoring, backups, dependency review and load testing. Session cleanup should periodically delete expired rows. Database row-level security is not enabled; tenant isolation is enforced by application queries and composite foreign keys, so direct SQL access must remain restricted. Document reviews use revision checks; existing business CRUD uses last-write-wins semantics.
 

@@ -30,6 +30,7 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-matchledger}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-matchledger}
       REDIS_URL: redis://redis:6379/0
       DOCUMENT_STORAGE_PATH: /workspace/private_documents
+      REPORT_STORAGE_PATH: /workspace/private_reports
       MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-20}
       MAX_DOCUMENT_PAGES: ${MAX_DOCUMENT_PAGES:-30}
       MAX_IMAGE_PIXELS: ${MAX_IMAGE_PIXELS:-25000000}
@@ -44,7 +45,7 @@ services:
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
-    volumes: ["document_files:/workspace/private_documents"]
+    volumes: ["document_files:/workspace/private_documents", "report_files:/workspace/private_reports"]
     mem_limit: 2g
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     healthcheck:
@@ -91,4 +92,5 @@ volumes:
   postgres_data:
   redis_data:
   document_files:
+  report_files:
   ocr_models:

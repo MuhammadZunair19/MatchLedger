@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from redis.exceptions import RedisError
 from starlette.concurrency import run_in_threadpool
 from .db import get_db
-from .security import current, Context
+from .security import current, Context, require_permission
 from .config import settings
 from . import models as m
 from .document_schemas import DocumentType, SaveReview, ConfirmReview
@@ -30,6 +30,7 @@ def document_json(row):
 @router.post('/upload', status_code=201)
 async def upload(document_type: Annotated[DocumentType, Form()], file: Annotated[UploadFile, File()],
                  ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'review')
     size = 0; chunks = []
     while chunk := await file.read(1024 * 1024):
         size += len(chunk)
@@ -60,6 +61,7 @@ async def upload(document_type: Annotated[DocumentType, Form()], file: Annotated
 def listing(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), q: str = Query('', max_length=100),
             status: str | None = None, document_type: DocumentType | None = None,
             ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'view')
     query = scoped(m.Document, ctx)
     if q: query = query.where(m.Document.filename.icontains(q, autoescape=True))
     if status: query = query.where(m.Document.status == status)
@@ -77,6 +79,7 @@ def listing(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
 
 @router.get('/{id}')
 def detail(id: str, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'view')
     row = get_record(db, m.Document, id, ctx)
     jobs.recover_stale(db, row)
     return document_json(row)
@@ -84,6 +87,7 @@ def detail(id: str, ctx: Context = Depends(current), db: Session = Depends(get_d
 
 @router.get('/{id}/file')
 def file(id: str, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'view')
     row = get_record(db, m.Document, id, ctx)
     path = LocalStorage().path(ctx.org, row.storage_key)
     if not path.is_file(): raise HTTPException(404, 'Document file is unavailable')
@@ -93,6 +97,7 @@ def file(id: str, ctx: Context = Depends(current), db: Session = Depends(get_db)
 
 @router.get('/{id}/pages/{page}')
 def preview(id: str, page: int, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'view')
     row = get_record(db, m.Document, id, ctx)
     if not 1 <= page <= row.page_count: raise HTTPException(404, 'Page not found')
     try: content = bounded_parse(LocalStorage().path(ctx.org, row.storage_key), 'render', page)
@@ -102,6 +107,7 @@ def preview(id: str, page: int, ctx: Context = Depends(current), db: Session = D
 
 @router.post('/{id}/extract', status_code=202)
 def extract(id: str, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'review')
     doc = get_record(db, m.Document, id, ctx, lock=True)
     jobs.recover_stale(db, doc)
     doc = get_record(db, m.Document, id, ctx, lock=True)
@@ -121,6 +127,7 @@ def extract(id: str, ctx: Context = Depends(current), db: Session = Depends(get_
 
 @router.get('/{id}/extraction')
 def extraction(id: str, version: int | None = Query(None, ge=1), ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'view')
     doc = get_record(db, m.Document, id, ctx); jobs.recover_stale(db, doc)
     query = scoped(m.DocumentExtraction, ctx).where(m.DocumentExtraction.document_id == id)
     if version: query = query.where(m.DocumentExtraction.version == version)
@@ -133,12 +140,14 @@ def extraction(id: str, version: int | None = Query(None, ge=1), ctx: Context = 
 
 @router.get('/{id}/status')
 def status(id: str, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'view')
     doc = get_record(db, m.Document, id, ctx); jobs.recover_stale(db, doc)
     return {'id': doc.id, 'status': doc.status, 'last_error': doc.last_error, 'updated_at': doc.updated_at}
 
 
 @router.put('/{id}/review')
 def review(id: str, data: SaveReview, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'review')
     doc = get_record(db, m.Document, id, ctx, lock=True)
     save_draft(db, doc, data, ctx); db.commit()
     return {'review_revision': doc.review_revision, 'review_data': doc.review_data,
@@ -147,12 +156,14 @@ def review(id: str, data: SaveReview, ctx: Context = Depends(current), db: Sessi
 
 @router.get('/{id}/corrections')
 def corrections(id: str, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'view')
     get_record(db, m.Document, id, ctx)
     return [public(row) for row in db.scalars(scoped(m.FieldCorrection, ctx).where(m.FieldCorrection.document_id == id).order_by(m.FieldCorrection.created_at.desc()).limit(1000))]
 
 
 @router.post('/{id}/verify')
 def verify(id: str, data: ConfirmReview, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'review')
     doc = get_record(db, m.Document, id, ctx, lock=True)
     row = confirm(db, doc, data, ctx); db.commit()
     return {'document': document_json(doc), 'business_entity_type': row.__tablename__, 'business_entity_id': row.id}
@@ -160,6 +171,7 @@ def verify(id: str, data: ConfirmReview, ctx: Context = Depends(current), db: Se
 
 @router.delete('/{id}', status_code=204)
 def remove(id: str, ctx: Context = Depends(current), db: Session = Depends(get_db)):
+    require_permission(ctx, 'review')
     doc = get_record(db, m.Document, id, ctx, lock=True); jobs.recover_stale(db, doc)
     if doc.status in ('QUEUED', 'PROCESSING'): raise HTTPException(409, 'Wait for processing to finish before deleting')
     key = doc.storage_key

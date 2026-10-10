@@ -5,6 +5,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy import select
 from ... import models as m
+from ...request_context import request_id
 from .matching_orchestrator import ENGINE_VERSION, run_match
 from .line_item_matcher import match_lines
 from .reference_matcher import normalize_reference
@@ -90,6 +91,9 @@ def execute(db, ctx, data):
     snapshot = {'invoice': _record(db, invoice, m.SupplierInvoiceLine, ctx.org),
                 'purchase_order': _record(db, order, m.PurchaseOrderLine, ctx.org),
                 'receipts': [_record(db, row, m.GoodsReceiptLine, ctx.org) for row in receipts]}
+    # A verified ledger link is authoritative evidence of the selected PO. A reviewed
+    # document reference, when present, is retained so a conflict remains detectable.
+    snapshot['invoice']['po_reference'] = order.number if invoice.purchase_order_id == order.id else None
     document_versions = _document_versions(db, ctx.org, {'supplier_invoices': invoice.id,
         'purchase_orders': order.id, 'goods_receipts': [row.id for row in receipts]})
     invoice_docs = document_versions.get('supplier_invoices', [])
@@ -97,7 +101,9 @@ def execute(db, ctx, data):
         document = _one(db, m.Document, ctx.org, invoice_docs[0]['document_id'])
         fields = (document.review_data or {}).get('fields', {})
         value = fields.get('purchase_order_reference', {})
-        snapshot['invoice']['po_reference'] = value.get('value') if isinstance(value, dict) else value
+        document_reference = value.get('value') if isinstance(value, dict) else value
+        if document_reference:
+            snapshot['invoice']['po_reference'] = document_reference
     same_supplier = db.scalars(select(m.SupplierInvoice).where(m.SupplierInvoice.organization_id == ctx.org,
         m.SupplierInvoice.supplier_id == invoice.supplier_id, m.SupplierInvoice.id != invoice.id)).all()
     normalized = normalize_reference(invoice.number)
@@ -151,7 +157,7 @@ def execute(db, ctx, data):
                     supplier_id=invoice.supplier_id, source_sku=line.get('sku'), source_description=line['description'], purchase_order_line_id=po_line_id))
     db.add(m.AuditEvent(organization_id=ctx.org, created_by=ctx.user.id, updated_by=ctx.user.id,
         action='match_run', entity_type='match_runs', entity_id=run.id,
-        detail={'status': run.status, 'invoice_id': invoice.id, 'purchase_order_id': order.id, 'mode': data.matching_mode}))
+        detail={'status': run.status, 'invoice_id': invoice.id, 'purchase_order_id': order.id, 'mode': data.matching_mode}, request_id=request_id()))
     db.commit()
     return run.id
 
