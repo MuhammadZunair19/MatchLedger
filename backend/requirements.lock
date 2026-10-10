@@ -81,6 +81,7 @@ python-dotenv==1.2.4
 python-multipart==0.0.32
 PyYAML==6.0.2
 redis==7.4.1
+rapidfuzz==3.14.6
 requests==2.34.2
 rq==2.12.0
 ruamel.yaml==0.19.1

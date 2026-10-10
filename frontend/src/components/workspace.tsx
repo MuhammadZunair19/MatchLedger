@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Building2, ClipboardList, PackageCheck, ReceiptText, Layers3, Users, LogOut, Plus, Search, ArrowUpRight, ChevronLeft, ChevronRight, Pencil, Trash2, Menu, X, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, Building2, ClipboardList, PackageCheck, ReceiptText, Layers3, Users, LogOut, Plus, Search, ArrowUpRight, ChevronLeft, ChevronRight, Pencil, Trash2, Menu, X, CheckCircle2, GitCompareArrows } from 'lucide-react';
 import { api, Auth, Page, RecordRow, money, allRecords } from '@/lib/api';
 import { Button } from './ui/button';
 import AuthForm from './auth-form';
 import RecordEditor from './record-editor';
 import DocumentWorkspace from './document-workspace';
+import MatchingWorkspace from './matching-workspace';
 import { useRouter } from 'next/navigation';
 
 const navigation = [
@@ -15,6 +16,7 @@ const navigation = [
   { id: 'receipts', label: 'Goods receipts', icon: PackageCheck },
   { id: 'invoices', label: 'Supplier invoices', icon: ReceiptText },
   { id: 'documents', label: 'Documents', icon: Layers3 },
+  { id: 'matching', label: 'Matching', icon: GitCompareArrows },
   { id: 'members', label: 'Team members', icon: Users },
 ];
 type Dashboard = { counts: { [key: string]: number }; invoice_totals: { [key: string]: string }; activity: { id: string; action: string; entity_type: string; created_at: string }[] };
@@ -34,7 +36,7 @@ export default function Workspace({ initialScreen = 'dashboard' }: { initialScre
     if (!auth) return;
     let active = true; setLoading(true); setError(''); setData(null); setDashboard(null); setMembers([]);
     const load = async () => {
-      if (screen === 'documents') return;
+      if (screen === 'documents' || screen === 'matching') return;
       if (screen === 'dashboard') { const value = await api<Dashboard>('/dashboard'); if (active) setDashboard(value); }
       else if (screen === 'members') { const value = await api<Member[]>('/members'); if (active) setMembers(value); }
       else {
@@ -45,7 +47,7 @@ export default function Workspace({ initialScreen = 'dashboard' }: { initialScre
     load().catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [auth, screen, page, search, version]);
-  function navigate(id: string) { if (id === 'documents') router.push('/documents'); setScreen(id); setPage(1); setSearch(''); setQuery(''); setNotice(''); setDeleting(null); setMobile(false); }
+  function navigate(id: string) { if (id === 'documents') router.push('/documents'); else if (id === 'matching') router.push('/matching'); else router.push('/'); setScreen(id); setPage(1); setSearch(''); setQuery(''); setNotice(''); setDeleting(null); setMobile(false); }
   async function logout() { setBusy(true); try { await api('/auth/logout', { method: 'POST' }, auth?.csrf_token); setAuth(null); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   async function remove(id: string) {
     setBusy(true); setError('');
@@ -61,7 +63,7 @@ export default function Workspace({ initialScreen = 'dashboard' }: { initialScre
   if (!auth) return <AuthForm onAuth={a => { setAuth(a); navigate('dashboard'); }} />;
   const org = auth.organizations.find(o => o.id === auth.organization_id)!;
   const title = navigation.find(n => n.id === screen)?.label;
-  const isResource = !['dashboard', 'members', 'documents'].includes(screen);
+  const isResource = !['dashboard', 'members', 'documents', 'matching'].includes(screen);
   return <div className="min-h-screen lg:pl-64">
     <aside className={`${mobile ? 'flex' : 'hidden'} lg:flex fixed inset-y-0 left-0 w-64 z-30 bg-[#132d3d] text-slate-300 flex-col p-5 overflow-y-auto`}>
       <div className="flex items-center gap-2.5 text-xl text-white font-bold px-2 pt-3 pb-10"><Layers3 className="text-teal-300" size={25} />MatchLedger<span className="text-teal-300 -ml-2">.</span><button className="lg:hidden ml-auto" onClick={() => setMobile(false)} aria-label="Close navigation"><X size={18} /></button></div>
@@ -69,15 +71,16 @@ export default function Workspace({ initialScreen = 'dashboard' }: { initialScre
         setError(''); try { const next = await api<Auth>('/auth/organization', { method: 'POST', body: JSON.stringify({ organization_id: e.target.value }) }, auth.csrf_token); setEditor(null); setAuth(next); navigate('dashboard'); } catch (err) { setError((err as Error).message); }
       }}>{auth.organizations.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
       <p className="eyebrow text-slate-500 px-3 mb-3">Procurement</p><nav className="space-y-1">{navigation.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => navigate(id)} className={`w-full flex items-center gap-3 rounded-lg px-3 py-3 text-[13px] text-left transition ${screen === id ? 'bg-teal-400/15 text-teal-200 font-semibold' : 'hover:bg-white/5'}`} aria-current={screen === id ? 'page' : undefined}><Icon size={18} />{label}{screen === id && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-teal-300" />}</button>)}</nav>
-      <div className="mt-auto pt-12"><div className="sidebar-tip rounded-lg border border-slate-600/50 p-4 mb-5"><p className="text-teal-200 text-xs font-semibold">A foundation for better matching</p><p className="text-xs text-slate-400 leading-5 mt-2">Capture records now. Automated matching arrives in a later milestone.</p></div><div className="border-t border-slate-600/50 pt-5 flex items-center gap-3"><div className="rounded-full bg-slate-600 text-white w-9 h-9 flex items-center justify-center">{auth.user.name.slice(0, 1).toUpperCase()}</div><div className="min-w-0"><p className="text-xs text-white truncate">{auth.user.name}</p><p className="text-[11px] mt-1 capitalize text-slate-400">{org.role}</p></div><button onClick={logout} disabled={busy} aria-label="Sign out" className="ml-auto hover:text-white"><LogOut size={17} /></button></div></div>
+      <div className="mt-auto pt-12"><div className="sidebar-tip rounded-lg border border-slate-600/50 p-4 mb-5"><p className="text-teal-200 text-xs font-semibold">Deterministic matching</p><p className="text-xs text-slate-400 leading-5 mt-2">Compare verified orders, receipts and invoices with traceable findings.</p></div><div className="border-t border-slate-600/50 pt-5 flex items-center gap-3"><div className="rounded-full bg-slate-600 text-white w-9 h-9 flex items-center justify-center">{auth.user.name.slice(0, 1).toUpperCase()}</div><div className="min-w-0"><p className="text-xs text-white truncate">{auth.user.name}</p><p className="text-[11px] mt-1 capitalize text-slate-400">{org.role}</p></div><button onClick={logout} disabled={busy} aria-label="Sign out" className="ml-auto hover:text-white"><LogOut size={17} /></button></div></div>
     </aside>
-    <header className="bg-white border-b border-slate-200 h-18 px-6 lg:px-10 flex items-center justify-between"><div className="flex gap-3 items-center"><button className="lg:hidden" onClick={() => setMobile(true)} aria-label="Open navigation"><Menu size={22} /></button><span className="text-slate-400 text-xs">Workspace</span><span className="text-slate-300">/</span><span className="text-xs font-semibold">{title}</span></div><span className="flex gap-2 items-center text-[11px] text-slate-500"><span className="w-1.5 h-1.5 bg-teal-600 rounded-full" />Milestone 2</span></header>
+    <header className="bg-white border-b border-slate-200 h-18 px-6 lg:px-10 flex items-center justify-between"><div className="flex gap-3 items-center"><button className="lg:hidden" onClick={() => setMobile(true)} aria-label="Open navigation"><Menu size={22} /></button><span className="text-slate-400 text-xs">Workspace</span><span className="text-slate-300">/</span><span className="text-xs font-semibold">{title}</span></div><span className="flex gap-2 items-center text-[11px] text-slate-500"><span className="w-1.5 h-1.5 bg-teal-600 rounded-full" />Milestone 3</span></header>
     <main className="p-6 lg:p-10 max-w-[1500px] mx-auto">
       <div className="flex flex-wrap gap-4 justify-between items-end mb-8"><div><p className="eyebrow text-teal-700 mb-3">{org.name}</p><h1 className="text-3xl font-semibold tracking-tight">{screen === 'dashboard' ? 'Procurement overview' : title}</h1><p className="text-slate-500 mt-2 text-sm">{screen === 'dashboard' ? 'A clear picture of your procurement, from order to invoice.' : screen === 'members' ? 'Manage the people who share your organization’s ledger.' : 'Organize, review and maintain your procurement records.'}</p></div>{isResource && <Button disabled={loading || !data} onClick={() => setEditor({ record: null })}><Plus size={16} />New {screen === 'suppliers' ? 'supplier' : screen === 'purchase-orders' ? 'purchase order' : screen === 'receipts' ? 'receipt' : 'invoice'}</Button>}</div>
       {error && <div role="alert" className="p-4 bg-red-50 border border-red-100 rounded-lg text-red-700 mb-5">{error}<Button variant="ghost" size="sm" className="ml-3" onClick={() => setVersion(v => v + 1)}>Retry</Button></div>}
       {notice && <p role="status" className="p-3 mb-5 rounded-lg bg-teal-50 text-teal-800 flex gap-2 items-center"><CheckCircle2 size={16} />{notice}</p>}
       {loading && <p role="status" className="py-12 text-slate-500">Loading your records…</p>}
       {screen === 'documents' && <DocumentWorkspace key={auth.organization_id} auth={auth} />}
+      {screen === 'matching' && <MatchingWorkspace key={auth.organization_id} auth={auth} />}
       {!loading && dashboard && screen === 'dashboard' && <>
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">{navigation.slice(1, 5).map(({ id, label, icon: Icon }) => <button key={id} onClick={() => navigate(id)} className="card p-5 text-left hover:border-teal-500 transition"><div className="flex justify-between items-center"><span className="text-xs text-slate-500">{label}</span><Icon className="text-teal-700 bg-teal-50 rounded-lg p-2" size={36} /></div><div className="text-3xl font-semibold mt-3">{dashboard.counts[id]}</div><p className="text-[11px] text-slate-400 mt-4 flex items-center justify-between">View records<ArrowUpRight size={14} /></p></button>)}</div>
         <div className="grid xl:grid-cols-3 gap-6"><section className="card xl:col-span-2 overflow-hidden"><div className="p-6 border-b border-slate-100 flex justify-between items-center"><div><h2 className="font-semibold">Recent activity</h2><p className="text-xs text-slate-400 mt-1">The latest changes in your organization</p></div><span className="eyebrow text-slate-400">Audit trail</span></div>{dashboard.activity.length ? dashboard.activity.map(event => <div key={event.id} className="px-6 py-4 flex items-center gap-4 border-b last:border-b-0 border-slate-100"><div className="bg-slate-100 rounded-full p-2 text-slate-500"><ClipboardList size={16} /></div><div><p className="text-sm capitalize">{event.action.replaceAll('_', ' ')} · {event.entity_type.replaceAll('_', ' ')}</p><p className="text-xs text-slate-400 mt-1">{new Date(event.created_at).toLocaleString()}</p></div></div>) : <p className="p-8 text-slate-500">Your activity will appear as you add records.</p>}</section>

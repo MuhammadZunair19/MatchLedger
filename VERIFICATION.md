@@ -39,3 +39,18 @@ Run the commands in `docs/MILESTONE2.md` to validate this handoff. Milestone 2 i
 After manual review exposed blank fields on PDFs that render labels and values as separate spans, extraction was updated to pair same-row LTR/RTL evidence and to expose bilingual OCR alternatives to field recognition. The two retained demo PDFs now extract their number, date, supplier, currency, totals and line price without validation warnings. Native English/Arabic regression selection passed: 8 tests in 0.24 seconds.
 
 The strengthened real Arabic raster test passed in 94.36 seconds on CPU. It now requires an Arabic supplier name, invoice/date evidence, SAR, due date, Arabic line description, unit price and line total. OCR can still omit or confuse individual characters and quantities; these stay uncertain/missing for human review rather than being inferred. Ruff passed on backend and document/OCR tests. API tests requiring a new Starlette TestClient later stalled while Windows created its internal socket pair; they were interrupted and no application service was left running.
+
+## Milestone 3 verification record — October 10, 2026
+
+| Check | Result |
+| --- | --- |
+| Matching engine tests | 14 passed, including the SAR 5,500 / 4,500 / 1,000 reference case |
+| Matching persistence and tenant isolation | 2 passed against isolated SQLite with foreign keys enabled |
+| Targeted invoice extraction regressions | 9 passed for split labels, Arabic invoice fields and native English/Arabic/bilingual PDFs |
+| Frontend TypeScript | Passed |
+| Alembic upgrade/current/downgrade | Passed on a fresh temporary SQLite database; head was `c84e31f2a6d0` |
+| Existing FastAPI TestClient suite | Interrupted: this Windows host blocked inside CPython `socket.socketpair()` while starting Starlette's portal, before an application request |
+
+The engine tests cover exact and fuzzy association behavior, multiple invoice lines to one PO line, reference normalization, tolerance boundaries, zero expected price, missing receipts, duplicate/supplier/currency/date findings, two-way behavior and the full three-way sample variance. The persistence tests verify historical reruns, structured findings, audit creation and cross-tenant invisibility.
+
+No application or worker service was left running. PostgreSQL, Docker Compose, frontend production build and Playwright should still be run by the tester before accepting deployment. This is a development milestone and is not production-ready.

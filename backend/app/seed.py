@@ -32,11 +32,15 @@ def seed(organization_id):
         db.add(line); db.flush(); audit(db, ctx, 'seed', po)
         for key, schema, model, line_model in [('receipt', s.ReceiptInput, m.GoodsReceipt, m.GoodsReceiptLine), ('invoice', s.InvoiceInput, m.SupplierInvoice, m.SupplierInvoiceLine)]:
             fields = dict(data[key]); quantity = fields.pop('quantity'); price = fields.pop('unit_price', None)
-            line_data = dict(description=line.description, quantity=quantity, purchase_order_line_id=line.id)
+            line_data = dict(description=line.description, sku=line.sku, unit_of_measure=line.unit_of_measure,
+                             quantity=quantity, purchase_order_line_id=line.id)
             if price is not None: line_data['unit_price'] = price
             validated = schema(**fields, supplier_id=supplier.id, purchase_order_id=po.id, lines=[line_data])
             validate_links(db, validated, ctx)
-            row = model(**{**validated.model_dump(exclude={'lines'}), 'date': validated.date.isoformat()}, **common)
+            values = {**validated.model_dump(exclude={'lines'}), 'date': validated.date.isoformat()}
+            if key == 'invoice' and validated.due_date:
+                values['due_date'] = validated.due_date.isoformat()
+            row = model(**values, **common)
             db.add(row); db.flush()
             db.add(line_model(**validated.lines[0].model_dump(), parent_id=row.id, **common)); audit(db, ctx, 'seed', row)
         print('Seeded PO 100 × SAR 50, receipt 90, invoice 100 × SAR 55 (excluding VAT).')

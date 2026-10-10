@@ -1,4 +1,4 @@
-# MatchLedger — Milestones 1 and 2
+# MatchLedger — Milestones 1–3
 
 A multi-tenant procurement workspace for suppliers, purchase orders, goods receipts and supplier invoices. Next.js App Router, TypeScript, Tailwind CSS and shadcn-style UI primitives; FastAPI, SQLAlchemy, Pydantic and PostgreSQL. This is a development milestone, not a production-ready product.
 
@@ -11,6 +11,8 @@ A multi-tenant procurement workspace for suppliers, purchase orders, goods recei
 - Organization, User, Membership, Session, Supplier, PurchaseOrder/Line, GoodsReceipt/Line, SupplierInvoice/Line, Document, MatchRun, MatchFinding and AuditEvent tables.
 - PostgreSQL Alembic migration, deterministic sample seed, pytest tests and a real-browser Playwright workflow.
 - Private PDF/JPG/PNG uploads, native PDF text extraction, real PaddleOCR English/Arabic extraction in an RQ worker, source evidence and editable human review. Confirmation creates a new procurement record transactionally. See [Milestone 2 setup and manual guide](docs/MILESTONE2.md).
+- Separate verified invoice number, invoice date and due date fields for English, Arabic and bilingual evidence.
+- Deterministic Decimal-only two-way and three-way matching with organization tolerances, reviewable line suggestions, immutable history and structured findings. See [Milestone 3 guide](docs/MILESTONE3.md).
 
 ## Start with Docker (Windows PowerShell)
 
@@ -129,11 +131,13 @@ Authenticated mutations require the `X-CSRF-Token` returned by `/api/auth/me` or
 
 Each organization has an owner; members can manage procurement records. Only owners manage membership, and the owner cannot be removed. Existing membership lists refresh at login/reload. To switch organizations, use the sidebar selector.
 
-Receipts and invoices require a purchase order and unique references to its lines. Invoice currency must match its PO. Quantities and prices may differ intentionally; no matching verdict is calculated. A PO with linked receipts/invoices cannot be edited or deleted until those records are removed. Referenced suppliers cannot be deleted. These safeguards avoid dangling procurement references. Successful writes and their audit events commit together.
+Receipts and invoices require a purchase order. Multiple receipt or invoice lines may reference one PO line for split deliveries and charges. Invoice currency must match its PO at record creation. Quantities and prices may differ intentionally; the matching workspace evaluates those differences without mutating source records. A PO with linked receipts/invoices cannot be edited or deleted until those records are removed. Referenced suppliers cannot be deleted. Successful writes and their audit events commit together.
+
+Matching APIs are under `/api/matching`: settings GET/PUT, candidates GET, run list/detail/create and immutable rerun. Matching only reads verified business records in the active organization.
 
 ## Boundaries and follow-up work
 
-Matching execution, currency conversion, payment tracking and approval workflows remain outside this milestone. Uploaded VAT, discounts, SKU and unit evidence are retained in extraction and reviewed document JSON; existing business amounts still exclude VAT. No matching verdict is calculated. Document uploads validate extension, declared MIME, actual content, byte size, page count and pixel count. Source files are private and previews are authenticated raster images. Malware scanning is not included.
+Exchange-rate conversion, payment tracking, approval workflows, OCR auto-confirmation and automatic posting remain outside this milestone. Cross-currency matching produces a blocking finding; it never converts money. Document uploads validate extension, declared MIME, actual content, byte size, page count and pixel count. Source files are private and previews are authenticated raster images. Malware scanning is not included.
 
 Production hardening still requires deployment review, HTTPS, managed secrets, login rate limiting, password recovery/email verification, operational monitoring, backups, dependency review and load testing. Session cleanup should periodically delete expired rows. Database row-level security is not enabled; tenant isolation is enforced by application queries and composite foreign keys, so direct SQL access must remain restricted. Document reviews use revision checks; existing business CRUD uses last-write-wins semantics.
 

@@ -5,9 +5,14 @@ from .normalization_service import decimal_value, date_value, currency_value
 def validate_review(data, document_type):
     fields = data.get('fields', {})
     warnings = []
-    for name in ['number', 'date', 'supplier_name']:
+    required = ['invoice_number', 'invoice_date', 'supplier_name'] if document_type == 'supplier_invoice' else ['number', 'date', 'supplier_name']
+    for name in required:
         if not fields.get(name): warnings.append(f'Missing required field: {name}')
-    if fields.get('date') and date_value(fields['date'])[0] is None: warnings.append('Date needs correction')
+    for name in ('invoice_date', 'due_date') if document_type == 'supplier_invoice' else ('date',):
+        if fields.get(name) and date_value(fields[name])[0] is None: warnings.append(f'{name.replace("_", " ").title()} needs correction')
+    if document_type == 'supplier_invoice' and fields.get('invoice_date') and fields.get('due_date'):
+        invoice_date = date_value(fields['invoice_date'])[0]; due_date = date_value(fields['due_date'])[0]
+        if invoice_date and due_date and due_date < invoice_date: warnings.append('Due date precedes invoice date; verify both dates')
     if document_type != 'goods_receipt' and not currency_value(fields.get('currency')): warnings.append('Currency is missing or unknown')
     values = {}
     with localcontext() as context:

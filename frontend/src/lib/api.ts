@@ -1,6 +1,6 @@
 export type Auth = { user: { id: string; name: string; email: string }; csrf_token: string; organization_id: string; organizations: { id: string; name: string; role: string }[] };
-export type Line = { id?: string; description: string; quantity: string; unit_price?: string; purchase_order_line_id?: string; amount?: string };
-export type RecordRow = { id: string; name?: string; email?: string; phone?: string; address?: string; number?: string; date?: string; supplier_id?: string; purchase_order_id?: string; currency?: string; notes?: string; lines?: Line[]; total?: string; created_at: string };
+export type Line = { id?: string; description: string; sku?: string; unit_of_measure?: string; quantity: string; unit_price?: string; purchase_order_line_id?: string; amount?: string };
+export type RecordRow = { id: string; name?: string; email?: string; phone?: string; address?: string; external_identifier?: string; tax_id?: string; number?: string; invoice_number?: string; date?: string; invoice_date?: string; due_date?: string; supplier_id?: string; purchase_order_id?: string; currency?: string; notes?: string; subtotal?: string; discount?: string; vat_amount?: string; grand_total?: string; record_status?: string; lines?: Line[]; total?: string; created_at: string };
 export type Page = { items: RecordRow[]; total: number; page: number; page_size: number };
 export async function api<T>(path: string, options: RequestInit = {}, csrf?: string): Promise<T> {
   const response = await fetch(`/api${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}), ...options.headers } });

@@ -185,6 +185,9 @@ RESOURCES = {
 
 def serialize(db, row, line_model, ctx):
     result = public(row)
+    if isinstance(row, m.SupplierInvoice):
+        result['invoice_number'] = row.number
+        result['invoice_date'] = row.date
     if line_model:
         lines = db.scalars(scoped(line_model, ctx).where(line_model.parent_id == row.id).order_by(line_model.created_at, line_model.id)).all()
         result['lines'] = [public(line) for line in lines]
@@ -206,12 +209,10 @@ def validate_links(db, data, ctx):
             raise HTTPException(422, 'The purchase order belongs to a different supplier')
         if hasattr(data, 'currency') and data.currency != po.currency:
             raise HTTPException(422, 'Invoice currency must match the purchase order')
-        seen = set()
         for line in data.lines:
             linked = get_record(db, m.PurchaseOrderLine, line.purchase_order_line_id, ctx)
-            if linked.parent_id != po.id or linked.id in seen:
-                raise HTTPException(422, 'Each line must reference a distinct line from the selected purchase order')
-            seen.add(linked.id)
+            if linked.parent_id != po.id:
+                raise HTTPException(422, 'Every line must reference a line from the selected purchase order')
 
 
 def register_resource(path, model, line_model, input_schema):
@@ -238,7 +239,7 @@ def register_resource(path, model, line_model, input_schema):
             validate_links(db, data, ctx)
         fields = data.model_dump(exclude={'lines'})
         for key, value in fields.items():
-            setattr(row, key, value.isoformat() if key == 'date' else value)
+            setattr(row, key, value.isoformat() if key in ('date', 'due_date') and value is not None else value)
         row.updated_by = ctx.user.id
         row.updated_at = m.now()
         db.add(row); db.flush()
@@ -284,3 +285,5 @@ def dashboard(ctx: Context = Depends(current), db: DBSession = Depends(get_db)):
 
 from .document_routes import router as document_router
 app.include_router(document_router)
+from .matching_routes import router as matching_router
+app.include_router(matching_router)

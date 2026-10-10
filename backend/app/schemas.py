@@ -39,18 +39,24 @@ class SupplierInput(StrictModel):
     email: EmailStr | None = None
     phone: Annotated[str, Field(max_length=40)] | None = None
     address: Annotated[str, Field(max_length=1000)] | None = None
+    external_identifier: Annotated[str, Field(max_length=100)] | None = None
+    tax_id: Annotated[str, Field(max_length=100)] | None = None
 
 
 class POLineInput(StrictModel):
     description: Annotated[str, Field(min_length=1, max_length=500)]
     quantity: Quantity
     unit_price: Money
+    sku: Annotated[str, Field(max_length=100)] | None = None
+    unit_of_measure: Annotated[str, Field(max_length=40)] | None = None
 
 
 class ReceiptLineInput(StrictModel):
     description: Annotated[str, Field(min_length=1, max_length=500)]
     quantity: Quantity
     purchase_order_line_id: str
+    sku: Annotated[str, Field(max_length=100)] | None = None
+    unit_of_measure: Annotated[str, Field(max_length=40)] | None = None
 
 
 class InvoiceLineInput(POLineInput):
@@ -87,7 +93,13 @@ class ReceiptInput(HeaderInput):
 
 class InvoiceInput(CurrencyInput):
     purchase_order_id: str
+    due_date: date | None = None
+    subtotal: Money | None = None
+    discount: Money | None = None
+    vat_amount: Money | None = None
+    grand_total: Money | None = None
     lines: Annotated[list[InvoiceLineInput], Field(min_length=1, max_length=200)]
+
 
 
 def line_total(quantity: Decimal, unit_price: Decimal) -> Decimal:

@@ -51,7 +51,7 @@ export default function DocumentReview({ id, auth }: { id: string; auth: Auth })
   const processing = ['QUEUED', 'PROCESSING'].includes(doc.status); const verified = doc.status === 'VERIFIED';
   const evidence = extraction?.latest?.extracted_data;
   const po = orders.find(order => order.id === draft?.purchase_order_id);
-  const required = ['number', 'date', 'supplier_name', ...(doc.document_type !== 'goods_receipt' ? ['currency'] : [])];
+  const required = [doc.document_type === 'supplier_invoice' ? 'invoice_number' : 'number', doc.document_type === 'supplier_invoice' ? 'invoice_date' : 'date', 'supplier_name', ...(doc.document_type !== 'goods_receipt' ? ['currency'] : [])];
   return <div className="space-y-5">
     <div className="flex flex-wrap justify-between gap-3 items-center"><Link href="/documents" className="text-xs font-semibold text-teal-700 flex items-center gap-2"><ArrowLeft size={14} />All documents</Link><div className="flex gap-2"><Button variant="outline" size="sm" asChild><a href={`/api/documents/${id}/file`}><Download size={14} />Download original</a></Button>{!verified && <Button size="sm" disabled={busy || processing || dirty} onClick={start}><ScanText size={14} />{processing ? 'Processing…' : extraction?.latest ? 'Retry extraction' : 'Start extraction'}</Button>}</div></div>
     <div className="flex gap-3 items-center"><h2 className="text-lg font-semibold break-all">{doc.filename}</h2><span className="text-xs rounded-full bg-teal-50 text-teal-800 px-3 py-1" role="status">{pretty(doc.status)}</span></div>

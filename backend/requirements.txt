@@ -17,3 +17,4 @@ redis>=5,<8
 rq>=2.2,<3
 python-multipart>=0.0.20,<1
 ruff>=0.12,<1
+rapidfuzz>=3.12,<4

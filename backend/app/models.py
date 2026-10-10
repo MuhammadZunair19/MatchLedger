@@ -62,6 +62,8 @@ class Supplier(Tenant, Base):
     email: Mapped[str | None] = mapped_column(String(254))
     phone: Mapped[str | None] = mapped_column(String(40))
     address: Mapped[str | None] = mapped_column(String(1000))
+    external_identifier: Mapped[str | None] = mapped_column(String(100))
+    tax_id: Mapped[str | None] = mapped_column(String(100))
     __table_args__ = (UniqueConstraint('organization_id', 'id'), UniqueConstraint('organization_id', 'name'))
 
 
@@ -70,6 +72,7 @@ class Header(Tenant):
     number: Mapped[str] = mapped_column(String(80))
     date: Mapped[str] = mapped_column(String(10))
     notes: Mapped[str | None] = mapped_column(String(2000))
+    record_status: Mapped[str] = mapped_column(String(20), default='VERIFIED', server_default='VERIFIED')
 
 
 def header_constraints(table, po=False):
@@ -96,13 +99,23 @@ class SupplierInvoice(Header, Base):
     __tablename__ = 'supplier_invoices'
     purchase_order_id: Mapped[str] = mapped_column(String(36))
     currency: Mapped[str] = mapped_column(String(3), default='SAR')
-    __table_args__ = header_constraints(__tablename__, True)
+    due_date: Mapped[str | None] = mapped_column(String(10))
+    subtotal: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    discount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    vat_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    grand_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    __table_args__ = (UniqueConstraint('organization_id', 'id'),
+        UniqueConstraint('organization_id', 'supplier_id', 'number', name='uq_supplier_invoice_supplier_number'),
+        ForeignKeyConstraint(['organization_id', 'supplier_id'], ['suppliers.organization_id', 'suppliers.id']),
+        ForeignKeyConstraint(['organization_id', 'purchase_order_id'], ['purchase_orders.organization_id', 'purchase_orders.id']))
 
 
 class Line(Tenant):
     parent_id: Mapped[str] = mapped_column(String(36), index=True)
     description: Mapped[str] = mapped_column(String(500))
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    sku: Mapped[str | None] = mapped_column(String(100))
+    unit_of_measure: Mapped[str | None] = mapped_column(String(40))
 
 
 def line_constraints(parent, with_po=False):
@@ -186,17 +199,63 @@ class FieldCorrection(Tenant, Base):
 class MatchRun(Tenant, Base):
     __tablename__ = 'match_runs'
     invoice_id: Mapped[str] = mapped_column(String(36))
-    status: Mapped[str] = mapped_column(String(24), default='pending')
-    engine_version: Mapped[str | None] = mapped_column(String(40))
-    __table_args__ = (UniqueConstraint('organization_id', 'id'), ForeignKeyConstraint(['organization_id', 'invoice_id'], ['supplier_invoices.organization_id', 'supplier_invoices.id']))
+    purchase_order_id: Mapped[str | None] = mapped_column(String(36))
+    matching_mode: Mapped[str] = mapped_column(String(16), default='TWO_WAY', server_default='TWO_WAY')
+    receipt_ids: Mapped[list] = mapped_column(JSON, default=list, server_default='[]')
+    status: Mapped[str] = mapped_column(String(32), default='REVIEW_REQUIRED', server_default='REVIEW_REQUIRED')
+    engine_version: Mapped[str | None] = mapped_column(String(40), default='deterministic-v1')
+    settings_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    document_versions: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    source_record_versions: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    result_summary: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    review_notes: Mapped[str | None] = mapped_column(String(2000))
+    input_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint('organization_id', 'id'),
+        ForeignKeyConstraint(['organization_id', 'invoice_id'], ['supplier_invoices.organization_id', 'supplier_invoices.id']),
+        ForeignKeyConstraint(['organization_id', 'purchase_order_id'], ['purchase_orders.organization_id', 'purchase_orders.id']))
 
 
 class MatchFinding(Tenant, Base):
     __tablename__ = 'match_findings'
     match_run_id: Mapped[str] = mapped_column(String(36))
     code: Mapped[str] = mapped_column(String(80))
+    severity: Mapped[str] = mapped_column(String(16), default='WARNING', server_default='WARNING')
+    explanation: Mapped[str] = mapped_column(String(2000), default='', server_default='')
+    purchase_order_line_id: Mapped[str | None] = mapped_column(String(36))
+    invoice_line_id: Mapped[str | None] = mapped_column(String(36))
+    receipt_line_id: Mapped[str | None] = mapped_column(String(36))
+    expected_value: Mapped[str | None] = mapped_column(String(100))
+    actual_value: Mapped[str | None] = mapped_column(String(100))
+    difference: Mapped[str | None] = mapped_column(String(100))
+    unit: Mapped[str | None] = mapped_column(String(40))
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    applicable_tolerance: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    review_required: Mapped[bool] = mapped_column(default=False, server_default='false')
+    resolution_status: Mapped[str] = mapped_column(String(24), default='OPEN', server_default='OPEN')
     detail: Mapped[dict] = mapped_column(JSON)
-    __table_args__ = (ForeignKeyConstraint(['organization_id', 'match_run_id'], ['match_runs.organization_id', 'match_runs.id']),)
+    __table_args__ = (ForeignKeyConstraint(['organization_id', 'match_run_id'], ['match_runs.organization_id', 'match_runs.id'], ondelete='CASCADE'),)
+
+
+class MatchingSettings(Tenant, Base):
+    __tablename__ = 'matching_settings'
+    price_tolerance_percent: Mapped[Decimal] = mapped_column(Numeric(9, 4), default=Decimal('0'), server_default='0')
+    price_tolerance_absolute: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal('0'), server_default='0')
+    quantity_tolerance: Mapped[Decimal] = mapped_column(Numeric(18, 3), default=Decimal('0'), server_default='0')
+    total_tolerance_absolute: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal('0.01'), server_default='0.01')
+    unit_conversions: Mapped[dict] = mapped_column(JSON, default=dict, server_default='{}')
+    __table_args__ = (UniqueConstraint('organization_id'), UniqueConstraint('organization_id', 'id'))
+
+
+class ItemMapping(Tenant, Base):
+    __tablename__ = 'item_mappings'
+    supplier_id: Mapped[str] = mapped_column(String(36))
+    source_sku: Mapped[str | None] = mapped_column(String(100))
+    source_description: Mapped[str] = mapped_column(String(500))
+    purchase_order_line_id: Mapped[str] = mapped_column(String(36))
+    __table_args__ = (UniqueConstraint('organization_id', 'supplier_id', 'source_sku', 'source_description'),
+        ForeignKeyConstraint(['organization_id', 'supplier_id'], ['suppliers.organization_id', 'suppliers.id']),
+        ForeignKeyConstraint(['organization_id', 'purchase_order_line_id'], ['purchase_order_lines.organization_id', 'purchase_order_lines.id']))
 
 
 class AuditEvent(Tenant, Base):

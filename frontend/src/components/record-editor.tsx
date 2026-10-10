@@ -24,12 +24,13 @@ export default function RecordEditor({ resource, record, suppliers, orders, auth
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
     const data: { [key: string]: unknown } = Object.fromEntries(new FormData(event.currentTarget));
-    if (supplier) { for (const key of ['email', 'phone', 'address']) data[key] = data[key] || null; }
+    if (supplier) { for (const key of ['email', 'phone', 'address', 'external_identifier', 'tax_id']) data[key] = data[key] || null; }
     else {
       data.supplier_id = supplierId;
       if (!receipt) data.currency = currency;
       if (linked) data.purchase_order_id = poId;
-      data.lines = lines.map(line => ({ description: line.description, quantity: line.quantity, ...(!receipt ? { unit_price: line.unit_price } : {}), ...(linked ? { purchase_order_line_id: line.purchase_order_line_id } : {}) }));
+      if (resource === 'invoices') for (const key of ['due_date', 'subtotal', 'discount', 'vat_amount', 'grand_total']) data[key] = data[key] || null;
+      data.lines = lines.map(line => ({ description: line.description, sku: line.sku || null, unit_of_measure: line.unit_of_measure || null, quantity: line.quantity, ...(!receipt ? { unit_price: line.unit_price } : {}), ...(linked ? { purchase_order_line_id: line.purchase_order_line_id } : {}) }));
     }
     try { await api(`/${resource}${record ? `/${record.id}` : ''}`, { method: record ? 'PUT' : 'POST', body: JSON.stringify(data) }, auth.csrf_token); onSaved(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -38,13 +39,15 @@ export default function RecordEditor({ resource, record, suppliers, orders, auth
   return <dialog ref={ref} onCancel={onClose} aria-labelledby="editor-title"><form onSubmit={submit}>
     <div className="flex items-center justify-between p-6 border-b border-slate-100"><div><p className="eyebrow text-teal-700 mb-2">Procurement records</p><h2 id="editor-title" className="text-xl font-semibold">{record ? 'Edit' : 'New'} {title}</h2></div><Button type="button" variant="ghost" onClick={onClose} aria-label="Close editor"><X size={18} /></Button></div>
     <div className="p-6 space-y-5">
-      {supplier ? <div className="grid sm:grid-cols-2 gap-5"><label>Supplier name<input name="name" required maxLength={160} defaultValue={record?.name} /></label><label>Email<input name="email" type="email" defaultValue={record?.email} /></label><label>Phone<input name="phone" maxLength={40} defaultValue={record?.phone} /></label><label>Address<input name="address" maxLength={1000} defaultValue={record?.address} /></label></div> : <>
+      {supplier ? <div className="grid sm:grid-cols-2 gap-5"><label>Supplier name<input name="name" required maxLength={160} defaultValue={record?.name} /></label><label>Email<input name="email" type="email" defaultValue={record?.email} /></label><label>Phone<input name="phone" maxLength={40} defaultValue={record?.phone} /></label><label>External identifier<input name="external_identifier" maxLength={100} defaultValue={record?.external_identifier} /></label><label>Tax ID<input name="tax_id" maxLength={100} defaultValue={record?.tax_id} /></label><label>Address<input name="address" maxLength={1000} defaultValue={record?.address} /></label></div> : <>
         <div className="grid sm:grid-cols-2 gap-5">
-          <label>Reference number<input name="number" required maxLength={80} defaultValue={record?.number} placeholder={receipt ? 'GR-2026-001' : resource === 'invoices' ? 'INV-2026-001' : 'PO-2026-001'} /></label>
-          <label>Date<input name="date" type="date" required defaultValue={record?.date || new Date().toLocaleDateString('en-CA')} /></label>
+          <label>{resource === 'invoices' ? 'Invoice number' : 'Reference number'}<input name="number" required maxLength={80} defaultValue={record?.number} placeholder={receipt ? 'GR-2026-001' : resource === 'invoices' ? 'INV-2026-001' : 'PO-2026-001'} /></label>
+          <label>{resource === 'invoices' ? 'Invoice date' : 'Date'}<input name="date" type="date" required defaultValue={record?.date || new Date().toLocaleDateString('en-CA')} /></label>
+          {resource === 'invoices' && <label>Due date<input name="due_date" type="date" defaultValue={record?.due_date} /></label>}
           {linked && <label>Purchase order<select required value={poId} onChange={e => selectPO(e.target.value)}><option value="">Select an order</option>{orders.map(o => <option key={o.id} value={o.id}>{o.number}</option>)}</select></label>}
           <label>Supplier<select required disabled={linked} value={supplierId} onChange={e => setSupplierId(e.target.value)}><option value="">Select a supplier</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
           {!receipt && <label>Currency (ISO code)<input required minLength={3} maxLength={3} value={currency} readOnly={linked} onChange={e => setCurrency(e.target.value.toUpperCase())} /></label>}
+          {resource === 'invoices' && <><label>Subtotal<input name="subtotal" type="number" min="0" step="0.01" defaultValue={record?.subtotal} /></label><label>Discount<input name="discount" type="number" min="0" step="0.01" defaultValue={record?.discount} /></label><label>VAT amount<input name="vat_amount" type="number" min="0" step="0.01" defaultValue={record?.vat_amount} /></label><label>Grand total<input name="grand_total" type="number" min="0" step="0.01" defaultValue={record?.grand_total} /></label></>}
         </div>
         <div className="border-t border-slate-100 pt-5"><div className="flex items-center justify-between mb-4"><h3 className="font-semibold">Line items</h3><span className="text-xs text-slate-400">Amounts exclude VAT</span></div>
           <div className="space-y-3">{lines.map((line, index) => <div key={index} className="grid grid-cols-12 items-end gap-3 bg-slate-50 p-3 rounded-lg">

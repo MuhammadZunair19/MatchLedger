@@ -21,13 +21,18 @@ STRATEGIES = {
     'purchase_order': {'number': ['Purchase order number', 'PO number', 'PO no', 'رقم أمر الشراء', 'رقم امر الشراء'],
         'date': ['Order date', 'PO date', 'تاريخ الطلب', 'تاريخ أمر الشراء'],
         'expected_delivery_date': ['Expected delivery date', 'Expected delivery', 'تاريخ التسليم المتوقع']},
-    'supplier_invoice': {'number': ['Invoice number', 'Invoice no', 'Invoice #', 'رقم الفاتورة'],
-        'date': ['Invoice date', 'تاريخ الفاتورة'], 'due_date': ['Due date', 'تاريخ الاستحقاق']},
+    'supplier_invoice': {
+        'invoice_number': ['Invoice number', 'Invoice no.', 'Invoice no', 'Invoice #', 'Invoice ID', 'Invoice Ref',
+            'Bill Number', 'Tax Invoice Number', 'رقم الفاتورة', 'رقم فاتورة', 'فاتورة رقم', 'رقم الفاتورة الضريبية'],
+        'invoice_date': ['Invoice date', 'Issue date', 'تاريخ الفاتورة', 'تاريخ الإصدار'],
+        'due_date': ['Due date', 'Payment due', 'Payment due date', 'Due on', 'Pay by', 'Payment deadline',
+            'تاريخ الاستحقاق', 'تاريخ استحقاق الدفع', 'موعد السداد', 'آخر موعد للدفع'],
+        'payment_terms': ['Payment terms', 'Terms', 'شروط الدفع']},
     'goods_receipt': {'number': ['Delivery note number', 'Delivery note no', 'Receipt number', 'DN number', 'رقم إشعار التسليم', 'رقم سند التسليم', 'رقم الاستلام'],
         'date': ['Delivery date', 'Receipt date', 'تاريخ التسليم', 'تاريخ الاستلام']},
 }
 MONEY_FIELDS = {'subtotal', 'discount', 'vat_amount', 'grand_total', 'quantity', 'unit_price', 'line_total'}
-DATE_FIELDS = {'date', 'due_date', 'expected_delivery_date'}
+DATE_FIELDS = {'date', 'invoice_date', 'due_date', 'expected_delivery_date'}
 
 
 def field(value=None, token=None, page=None, name=None, method=None):

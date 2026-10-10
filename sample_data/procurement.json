@@ -1,6 +1,6 @@
 {
   "supplier": {"name": "Riyadh Electrical Supplies", "email": "sales@example.com", "phone": "+966 11 555 0100", "address": "Riyadh, Saudi Arabia"},
-  "purchase_order": {"number": "PO-2026-001", "date": "2026-10-09", "currency": "SAR", "notes": "Sample procurement order. All amounts exclude VAT.", "lines": [{"description": "Electrical cable rolls", "quantity": "100", "unit_price": "50.00"}]},
-  "receipt": {"number": "GR-2026-001", "date": "2026-10-09", "notes": "Partial delivery: 90 of 100 cable rolls received.", "quantity": "90"},
-  "invoice": {"number": "INV-2026-001", "date": "2026-10-09", "currency": "SAR", "notes": "100 cable rolls billed at SAR 55.00 each, excluding VAT.", "quantity": "100", "unit_price": "55.00"}
+  "purchase_order": {"number": "PO-2026-001", "date": "2026-10-01", "currency": "SAR", "notes": "Sample procurement order. All amounts exclude VAT.", "lines": [{"description": "Electrical cable rolls", "sku": "CAB-50", "unit_of_measure": "roll", "quantity": "100", "unit_price": "50.00"}]},
+  "receipt": {"number": "GR-2026-001", "date": "2026-10-02", "notes": "Partial delivery: 90 of 100 cable rolls received.", "quantity": "90"},
+  "invoice": {"number": "INV-2026-001", "date": "2026-10-01", "due_date": "2026-10-31", "currency": "SAR", "subtotal": "5500.00", "discount": "0.00", "vat_amount": "0.00", "grand_total": "5500.00", "notes": "100 cable rolls billed at SAR 55.00 each, excluding VAT.", "quantity": "100", "unit_price": "55.00"}
 }

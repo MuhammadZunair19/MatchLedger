@@ -100,15 +100,30 @@ def test_ocr_adapter_does_not_invent_confidence():
 def test_native_pdf_extraction(name,kind,quantity,price):
     result = extract_document(FIXTURES/name,'application/pdf',kind)
     fields = result['data']['fields']
-    assert fields['number']['normalized_value']
-    assert fields['date']['normalized_value'] == '2026-10-09'
+    number_key = 'invoice_number' if kind == 'supplier_invoice' else 'number'
+    date_key = 'invoice_date' if kind == 'supplier_invoice' else 'date'
+    assert fields[number_key]['normalized_value']
+    assert fields[date_key]['normalized_value'] == '2026-10-09'
     assert fields['supplier_name']['normalized_value']
-    assert fields['number']['confidence'] is None
-    assert fields['number']['bounding_box']
+    assert fields[number_key]['confidence'] is None
+    assert fields[number_key]['bounding_box']
     assert len(result['data']['lines']) == 1
     line = result['data']['lines'][0]['fields']
     assert line['quantity']['normalized_value'] == quantity
     assert line['unit_price']['normalized_value'] == price
+
+
+def test_invoice_dates_and_number_remain_separate_with_arabic_labels():
+    def token(text, left, top):
+        return {'text': text, 'normalized': normalize_text(text), 'bbox': [left, top, left+.12, top+.02],
+                'confidence': .93, 'method': 'ocr', 'reading_order': 0}
+    page = {'number': 1, 'tokens': [token('INV-0007', .1, .1), token('رقم الفاتورة', .25, .1),
+                                    token('2026-10-01', .4, .2), token('تاريخ الفاتورة', .55, .2),
+                                    token('2026-10-31', .7, .3), token('تاريخ الاستحقاق', .85, .3)]}
+    fields = extract_fields([page], 'supplier_invoice')
+    assert fields['invoice_number']['normalized_value'] == 'INV-0007'
+    assert fields['invoice_date']['normalized_value'] == '2026-10-01'
+    assert fields['due_date']['normalized_value'] == '2026-10-31'
 
 
 def test_multipage_and_arithmetic():

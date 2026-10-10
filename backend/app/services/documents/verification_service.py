@@ -46,7 +46,8 @@ def confirm(db, doc, request, ctx):
     if warnings and not request.acknowledge_warnings: raise HTTPException(422, 'Review and acknowledge validation warnings before confirming')
     supplier_id = data.get('supplier_id')
     if not supplier_id and request.create_supplier:
-        try: supplier_input = s.SupplierInput(name=fields.get('supplier_name'))
+        try: supplier_input = s.SupplierInput(name=fields.get('supplier_name'),
+            external_identifier=fields.get('supplier_identifier'), tax_id=fields.get('supplier_tax_id'))
         except ValidationError: raise HTTPException(422, 'A supplier name is required') from None
         existing = db.scalar(select(m.Supplier).where(m.Supplier.organization_id == ctx.org, m.Supplier.name == supplier_input.name))
         if existing: raise HTTPException(409, 'A supplier with this name exists. Select that supplier in the review.')
@@ -57,13 +58,22 @@ def confirm(db, doc, request, ctx):
     kind = doc.document_type
     lines = []
     for line in data['lines']:
-        values = {'description': line.get('description'), 'quantity': decimal_value(line.get('quantity'))}
+        values = {'description': line.get('description'), 'quantity': decimal_value(line.get('quantity')),
+                  'sku': line.get('sku'), 'unit_of_measure': line.get('unit_of_measure')}
         if kind != 'goods_receipt': values['unit_price'] = decimal_value(line.get('unit_price'))
         if kind != 'purchase_order': values['purchase_order_line_id'] = line.get('purchase_order_line_id')
         lines.append(values)
-    values = {'supplier_id': supplier_id, 'number': fields.get('number'), 'date': date_value(fields.get('date'), settings.date_order)[0], 'notes': fields.get('notes'), 'lines': lines}
+    number_key = 'invoice_number' if kind == 'supplier_invoice' else 'number'
+    date_key = 'invoice_date' if kind == 'supplier_invoice' else 'date'
+    values = {'supplier_id': supplier_id, 'number': fields.get(number_key) or fields.get('number'),
+              'date': date_value(fields.get(date_key) or fields.get('date'), settings.date_order)[0],
+              'notes': fields.get('notes'), 'lines': lines}
     if kind != 'goods_receipt': values['currency'] = currency_value(fields.get('currency'))
     if kind != 'purchase_order': values['purchase_order_id'] = data.get('purchase_order_id')
+    if kind == 'supplier_invoice':
+        values['due_date'] = date_value(fields.get('due_date'), settings.date_order)[0] if fields.get('due_date') else None
+        for key in ('subtotal', 'discount', 'vat_amount', 'grand_total'):
+            values[key] = decimal_value(fields.get(key))
     specs = {'purchase_order': (s.POInput, m.PurchaseOrder, m.PurchaseOrderLine),
         'supplier_invoice': (s.InvoiceInput, m.SupplierInvoice, m.SupplierInvoiceLine), 'goods_receipt': (s.ReceiptInput, m.GoodsReceipt, m.GoodsReceiptLine)}
     schema, model, line_model = specs[kind]
@@ -73,7 +83,10 @@ def confirm(db, doc, request, ctx):
         raise HTTPException(422, '; '.join(messages)) from None
     validate_links(db, validated, ctx)
     common = {'organization_id': ctx.org, 'created_by': ctx.user.id, 'updated_by': ctx.user.id}
-    row = model(**{**validated.model_dump(exclude={'lines'}), 'date': validated.date.isoformat()}, **common)
+    model_values = validated.model_dump(exclude={'lines'})
+    model_values['date'] = validated.date.isoformat()
+    if model_values.get('due_date') is not None: model_values['due_date'] = validated.due_date.isoformat()
+    row = model(**model_values, **common)
     db.add(row); db.flush()
     for line in validated.lines: db.add(line_model(**line.model_dump(), parent_id=row.id, **common))
     db.flush(); audit(db, ctx, 'create_from_document', row)
