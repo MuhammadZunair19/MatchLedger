@@ -16,3 +16,7 @@ private_documents/
 .paddleocr/
 tmp/
 *.png.preview.png
+VERIFICATION.md
+TEST.md
+/docs
+/sample_data
