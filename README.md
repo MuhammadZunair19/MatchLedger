@@ -1,88 +1,310 @@
 # MatchLedger
 
-A multi-tenant procurement workspace for suppliers, purchase orders, goods receipts and supplier invoices. Next.js App Router, TypeScript, Tailwind CSS and shadcn-style UI primitives; FastAPI, SQLAlchemy, Pydantic and PostgreSQL. This is a development project, not a production-ready product.
+MatchLedger is a multi-tenant procurement application for managing suppliers, purchase orders, goods receipts, supplier invoices, document evidence, matching exceptions, approvals, audit history, and reports.
 
-## Included
+It supports English, Arabic, and bilingual procurement documents. Extracted values remain subject to human review, while financial matching uses deterministic rules and Python `Decimal` arithmetic.
 
-- Registration creates an organization and owner membership. Login, logout, expiring server-side sessions, organization switching, and owner-controlled membership of existing registered users.
-- Functional supplier, PO, receipt and invoice create/read/update/delete APIs and screens, line-item editors, search, pagination, validation, dashboard and audit activity.
-- SAR defaults with validated ISO 4217 currency codes. PostgreSQL `NUMERIC(18,2)` prices, `NUMERIC(18,3)` quantities and Python `Decimal` arithmetic. Each line is rounded half-up to two places before summation; values are serialized as strings. The frontend formats strings without money arithmetic. All sample amounts exclude VAT.
-- Organization filters on resource reads/writes; composite organization foreign keys prevent cross-tenant parent/child references. Supplier, PO, and PO-line consistency is also validated. Foreign IDs return 404. Authentication users are global identities connected through memberships; procurement records are tenant scoped.
-- Organization, User, Membership, Session, Supplier, PurchaseOrder/Line, GoodsReceipt/Line, SupplierInvoice/Line, Document, MatchRun, MatchFinding and AuditEvent tables.
-- PostgreSQL Alembic migration, deterministic sample seed, pytest tests and a real-browser Playwright workflow.
-- Private PDF/JPG/PNG uploads, native PDF text extraction, real PaddleOCR English/Arabic extraction in an RQ worker, source evidence and editable human review. Confirmation creates a new procurement record transactionally. See [Milestone 2 setup and manual guide](docs/MILESTONE2.md).
-- Separate verified invoice number, invoice date and due date fields for English, Arabic and bilingual evidence.
-- Deterministic Decimal-only two-way and three-way matching with organization tolerances, reviewable line suggestions, immutable history and structured findings. See [Milestone 3 guide](docs/MILESTONE3.md).
-- Persisted exception assignment, comments, resolution, escalation and authorized variance decisions; role-separated invoice review and finance approval with stale-match and blocking-finding guards.
-- Searchable audit state changes, real reporting metrics, Arabic-capable PDF reports, numeric XLSX workbooks, safe CSV exports and authenticated private downloads. See [Milestone 4 guide](docs/MILESTONE4.md).
+## System architecture
 
-## Start with Docker (Windows PowerShell)
+```mermaid
+flowchart LR
+    U[Browser] --> F[Next.js frontend]
+    F -->|/api proxy| A[FastAPI backend]
+    A --> P[(PostgreSQL)]
+    A --> R[(Redis)]
+    R --> W[RQ document worker]
+    A --> D[(Private document volume)]
+    W --> D
+    W --> O[PaddleOCR English and Arabic models]
+    A --> X[(Private report volume)]
+```
 
-Install Docker Desktop with its Linux/WSL2 engine and start it. From this folder:
+### Components
+
+| Component | Responsibility |
+| --- | --- |
+| Next.js frontend | Authentication, procurement CRUD, document review, matching, exceptions, approvals, audit, and reports |
+| FastAPI backend | Validation, session security, organization scoping, business workflows, matching orchestration, and report generation |
+| PostgreSQL | Organizations, memberships, procurement records, document evidence, match history, findings, approvals, and audit events |
+| Redis | Extraction job queue |
+| RQ worker | Native PDF parsing, image rendering, and PaddleOCR processing |
+| Private document storage | Original uploads and generated page previews |
+| Private report storage | Generated PDF, XLSX, and CSV exports |
+
+### Main data flows
+
+**Authentication**
+
+1. A user registers or signs in through Next.js.
+2. FastAPI creates an expiring server-side session.
+3. The browser stores an HttpOnly session cookie.
+4. Mutating requests also require the active CSRF token.
+5. Every business query is restricted to the selected organization.
+
+**Document processing**
+
+1. The backend validates the file extension, MIME type, real content, size, page count, and image dimensions.
+2. The original file is stored in private tenant-scoped storage.
+3. FastAPI places an extraction job in Redis.
+4. The worker uses native PDF text when available and PaddleOCR for scanned English or Arabic pages.
+5. Extracted evidence, warnings, and source coordinates are saved as a version.
+6. A reviewer corrects and confirms the draft before a procurement record is created.
+
+**Matching and approval**
+
+1. Two-way matching compares a purchase order with an invoice.
+2. Three-way matching also considers verified goods receipts.
+3. The engine stores an immutable match run, its inputs, calculations, and findings.
+4. Reviewers assign, discuss, escalate, resolve, or accept authorized variances.
+5. Approved invoices retain their match and decision history. Approval does not represent payment.
+
+## Technology
+
+- Next.js App Router, TypeScript, Tailwind CSS
+- FastAPI, SQLAlchemy, Pydantic
+- PostgreSQL and Alembic
+- Redis and RQ
+- PaddleOCR with English and Arabic recognition
+- pytest and Playwright
+- Docker Compose
+
+## Repository layout
+
+```text
+ocr/
+├── backend/
+│   ├── app/                 FastAPI routes, models, schemas, services, and worker
+│   ├── migrations/          Alembic migrations
+│   ├── Dockerfile
+│   └── requirements*.txt
+├── frontend/
+│   ├── src/app/             Next.js routes
+│   ├── src/components/      Application workspaces and UI components
+│   └── package.json
+├── sample_data/
+│   ├── documents/           English, Arabic, bilingual, scanned, and low-quality fixtures
+│   └── procurement.json     Reference procurement data
+├── tests/
+│   ├── backend/             Unit and API integration tests
+│   ├── e2e/                 Playwright browser workflows
+│   └── ocr/                 Real OCR tests
+├── docs/                    Detailed workflow guides
+├── compose.yaml
+├── TEST.md                  Complete manual acceptance checklist
+└── VERIFICATION.md          Recorded verification results
+```
+
+## Run with Docker Compose
+
+### Requirements
+
+- Windows 10 or 11
+- Docker Desktop using Linux containers and the WSL2 engine
+- Git
+
+Node.js and Python are only required when running tests or services directly on Windows.
+
+### 1. Open the project
 
 ```powershell
-Copy-Item .env.example .env
-# Generate a random local database password without placing it in source code.
-$dbPassword = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
-(Get-Content .env) -replace '^POSTGRES_PASSWORD=$', "POSTGRES_PASSWORD=$dbPassword" | Set-Content -Encoding utf8 .env
+Set-Location D:\ocr
+```
+
+### 2. Create the environment file
+
+Preserve an existing `.env`. For a new setup:
+
+```powershell
+if (-not (Test-Path .env)) {
+    Copy-Item .env.example .env
+    $dbPassword = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
+    (Get-Content .env) -replace '^POSTGRES_PASSWORD=$', "POSTGRES_PASSWORD=$dbPassword" |
+        Set-Content -Encoding utf8 .env
+}
+```
+
+The generated password remains in the ignored local `.env` file and is not stored in source code.
+
+Validate the configuration:
+
+```powershell
+docker compose config --quiet
+```
+
+No output and exit code `0` means the configuration is valid.
+
+### 3. Build and start the application
+
+```powershell
 docker compose up --build -d
 docker compose ps
 ```
 
-Open http://localhost:3000 and choose **Create workspace**. There are no default accounts. The API docs are at http://localhost:8000/docs. Migrations run before the backend starts. PostgreSQL data persists in a named volume. Ports bind only to the local machine.
+Five services should be running:
+
+| Service | Expected state |
+| --- | --- |
+| `db` | Running and healthy |
+| `redis` | Running and healthy |
+| `backend` | Running and healthy |
+| `worker` | Running |
+| `frontend` | Running |
+
+The first build can take several minutes. The first scanned-document extraction may also download OCR models into the persistent `ocr_models` volume.
+
+### 4. Check the application
 
 ```powershell
-docker compose logs -f backend
-docker compose down
+Invoke-RestMethod http://localhost:8000/api/health
 ```
 
-`down` preserves data; do not add `-v` unless you intend to delete the development database. Keep `.env` private. Changing the database password in `.env` does not change credentials inside an existing PostgreSQL volume.
+The response should contain `status` with the value `ok`.
 
-## Seed your organization
+Open:
 
-Register first. In the browser's developer console, retrieve your active organization ID:
+- Application: <http://localhost:3000>
+- FastAPI documentation: <http://localhost:8000/docs>
+
+There are no default users. Select **Create workspace** to register an owner and organization.
+
+### 5. Inspect logs
+
+```powershell
+docker compose logs --tail 100 backend
+docker compose logs --tail 100 worker
+docker compose logs --tail 100 frontend
+```
+
+Follow a service continuously when troubleshooting:
+
+```powershell
+docker compose logs -f worker
+```
+
+Press `Ctrl+C` to stop following logs. This does not stop the container.
+
+## Load sample data
+
+Register first, then open the browser developer console at <http://localhost:3000> and run:
 
 ```javascript
 (await (await fetch('/api/auth/me')).json()).organization_id
 ```
 
-Then in PowerShell:
+Copy the returned organization UUID into PowerShell:
 
 ```powershell
-docker compose exec backend python -m app.seed --organization-id YOUR_ORGANIZATION_ID
-# Optional extended scenarios A-H for exception, approval and reporting review:
-docker compose exec backend python -m app.seed_milestone4 --organization-id YOUR_ORGANIZATION_ID
+$organizationId = 'PASTE-ORGANIZATION-UUID-HERE'
+docker compose exec backend python -m app.seed --organization-id $organizationId
 ```
 
-Refresh the overview. The seed creates Riyadh Electrical Supplies, `PO-2026-001` for 100 cable rolls × SAR 50 = SAR 5,000, `GR-2026-001` for 90 rolls and `INV-2026-001` for 100 × SAR 55 = SAR 5,500, excluding VAT. The seed is transactional and skips an organization where the sample PO reference already exists. It creates no users or credentials. See `sample_data/procurement.json`.
+The reference data contains:
 
-## Local development without application containers
+- Purchase order `PO-2026-001`: 100 cable rolls at SAR 50, total SAR 5,000
+- Goods receipt `GR-2026-001`: 90 cable rolls
+- Supplier invoice `INV-2026-001`: 100 cable rolls at SAR 55, total SAR 5,500
 
-Requires Python 3.12+, Node.js 22+, PostgreSQL and Redis. Start the infrastructure after preparing `.env` above:
+Load additional exception, approval, reporting, and Arabic scenarios:
 
 ```powershell
+docker compose exec backend python -m app.seed_milestone4 --organization-id $organizationId
+```
+
+Both seed commands are repeatable and do not create users or passwords.
+
+## Run automated tests
+
+Keep the Docker Compose application running while using these commands.
+
+### Backend tests against PostgreSQL
+
+Run this from `D:\ocr`:
+
+```powershell
+docker compose exec backend sh -lc 'cd /workspace && TEST_DATABASE_URL="$DATABASE_URL" python -m pytest -q'
+```
+
+`/workspace` is a path inside the Linux container. It is not a folder on the Windows host. The Windows project remains at `D:\ocr`.
+
+Confirm the container layout if needed:
+
+```powershell
+docker compose exec backend sh -lc 'pwd; ls -la /workspace'
+```
+
+The tests create and remove random PostgreSQL `test_*` schemas. A successful run reaches `100%` with no failed tests.
+
+### Real OCR tests
+
+```powershell
+docker compose exec worker sh -lc 'cd /workspace && RUN_OCR_TESTS=1 python -m pytest tests/ocr -q'
+```
+
+These tests use the real English and Arabic OCR models and can take longer on CPU.
+
+### Frontend checks
+
+Node.js 22 or newer is recommended.
+
+```powershell
+Set-Location D:\ocr\frontend
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
+```
+
+### Browser tests
+
+Keep the full Compose stack running:
+
+```powershell
+Set-Location D:\ocr\frontend
+npx.cmd playwright install chromium
+npm.cmd run test:e2e
+```
+
+The browser tests create isolated organizations and exercise real API, database, worker, matching, exception, approval, audit, and document workflows.
+
+See [TEST.md](TEST.md) for the complete manual acceptance procedure and expected values.
+
+## Run services directly on Windows
+
+Use Docker only for PostgreSQL and Redis:
+
+```powershell
+Set-Location D:\ocr
 docker compose up -d db redis
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r backend/requirements.txt -r backend/requirements-ocr.txt
-# Read the generated URL-safe password from your local .env.
+
+if (-not (Test-Path .venv)) {
+    python -m venv .venv
+}
+
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt -r backend\requirements-ocr.txt
+
 $dbPassword = ((Get-Content .env | Where-Object { $_ -match '^POSTGRES_PASSWORD=' }) -split '=', 2)[1]
 $env:DATABASE_URL = "postgresql+psycopg://matchledger:${dbPassword}@127.0.0.1:5432/matchledger"
+$env:REDIS_URL = 'redis://127.0.0.1:6379/0'
 $env:APP_ORIGIN = 'http://localhost:3000'
-Set-Location backend
-..\.venv\Scripts\python -m alembic upgrade head
-..\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
+$env:PADDLE_PDX_CACHE_HOME = 'D:\ocr\.paddlex'
 ```
 
-In another PowerShell window, start the worker with the same `DATABASE_URL` environment variable (or put its real private value in `backend/.env`):
+Start the backend in one PowerShell window:
 
 ```powershell
 Set-Location D:\ocr\backend
-$env:REDIS_URL = 'redis://127.0.0.1:6379/0'
-$env:PADDLE_PDX_CACHE_HOME = 'D:\ocr\.paddlex'
-..\.venv\Scripts\python -m app.worker
+..\.venv\Scripts\python.exe -m alembic upgrade head
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-In a third PowerShell window:
+Start the worker in a second window with the same environment variables:
+
+```powershell
+Set-Location D:\ocr\backend
+..\.venv\Scripts\python.exe -m app.worker
+```
+
+Start the frontend in a third window:
 
 ```powershell
 Set-Location D:\ocr\frontend
@@ -90,64 +312,83 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-The browser calls `/api` on Next.js; Next proxies to FastAPI at `http://127.0.0.1:8000`. Set `API_INTERNAL_URL` before starting/building Next if the API is elsewhere. Docker builds set it to `http://backend:8000`. Webpack is selected because Turbopack crashed in the implementation environment.
+## Configuration
 
-## Tests
+Important settings are documented in `.env.example`:
 
-From the repository root, after installing Python dependencies:
+| Variable | Purpose |
+| --- | --- |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Local database credentials |
+| `APP_ORIGIN` | Exact browser origin accepted for authenticated mutations |
+| `COOKIE_SECURE` | Set to `true` behind production HTTPS |
+| `SESSION_HOURS` | Server-side session lifetime |
+| `REDIS_URL` | Extraction queue connection |
+| `DOCUMENT_STORAGE_PATH` | Private source-document storage |
+| `REPORT_STORAGE_PATH` | Private generated-report storage |
+| `MAX_UPLOAD_SIZE_MB` | Maximum upload size |
+| `MAX_DOCUMENT_PAGES` | Maximum PDF page count |
+| `MAX_IMAGE_PIXELS` | Maximum image pixel count |
+| `OCR_LANGUAGES` | Enabled OCR languages; defaults to English and Arabic |
+| `OCR_DPI` | PDF rasterization resolution for OCR |
+| `DATE_ORDER` | Ambiguous numeric date order |
+| `OLLAMA_ENABLED` | Optional local suggestion provider; disabled by default |
+
+Do not commit `.env`, uploaded documents, generated reports, database files, or credentials.
+
+## Persistent Docker data
+
+Docker Compose uses named volumes:
+
+| Volume | Contents |
+| --- | --- |
+| `postgres_data` | PostgreSQL database |
+| `redis_data` | Redis queue data |
+| `document_files` | Private uploads and previews |
+| `report_files` | Generated exports |
+| `ocr_models` | Downloaded OCR models |
+
+Stop and remove containers while preserving these volumes:
 
 ```powershell
-.\.venv\Scripts\python -m pytest -q
-# Run the same CRUD/isolation tests on PostgreSQL (uses disposable schemas).
-$env:TEST_DATABASE_URL = $env:DATABASE_URL
-.\.venv\Scripts\python -m pytest -q
-Remove-Item Env:TEST_DATABASE_URL
+Set-Location D:\ocr
+docker compose down
 ```
 
-Without `TEST_DATABASE_URL`, tests use isolated in-memory SQLite with foreign keys enabled. PostgreSQL is the supported application database; SQLite results do not establish PostgreSQL compatibility. The PostgreSQL test user needs CREATE SCHEMA permission; tests create and remove only random `test_*` schemas. The migration round-trip test uses its own temporary SQLite file.
-
-With the full Compose stack running, PostgreSQL tests can also run inside the backend container:
+Restart with the existing data:
 
 ```powershell
-docker compose exec backend sh -c 'cd /workspace && TEST_DATABASE_URL="$DATABASE_URL" python -m pytest -q'
+docker compose up -d
 ```
 
-For browser tests, keep the app running and use a disposable development database. Tests register a unique account and leave its organization/records for inspection:
+To permanently delete the local database, files, reports, queue data, and OCR models:
 
 ```powershell
-Set-Location frontend
-npm.cmd ci
-npx.cmd playwright install chromium
-npm.cmd run typecheck
-npm.cmd run build
-npm.cmd run test:e2e
+docker compose down -v
 ```
 
-Use `PLAYWRIGHT_BASE_URL` to override http://localhost:3000. No endpoints are mocked. The browser test covers registration, supplier/PO/receipt/invoice creation, invoice editing and deletion, persistence across reload, logout and login. pytest covers negative validation, CSRF, session expiry, CRUD, cross-tenant API access and database foreign-key protection, membership revocation, exact sample data, rounding and migration rollback.
+Use `down -v` only for an intentionally disposable environment.
 
-## API conventions and behavior
+## Security and financial boundaries
 
-`POST /api/auth/register`, `/login`, `/logout`; `GET /api/auth/me`; `POST /api/auth/organization`. Owners use `GET/POST /api/members` and `DELETE /api/members/{id}`. Adding a member requires their existing registered email; there is no email invitation flow.
+- Business records are scoped to an organization in application queries and composite foreign keys.
+- Sessions use random tokens; only token digests are stored in the database.
+- Passwords are Argon2-hashed.
+- Mutations require session authentication, CSRF protection, and an accepted origin.
+- Money uses PostgreSQL `NUMERIC` and Python `Decimal`, never floating-point calculations.
+- Source documents and reports require authenticated downloads and are not public frontend assets.
+- OCR output is evidence for review and never becomes an authoritative record without confirmation.
+- Matching is deterministic and never performs automatic currency conversion.
+- Approval records a review decision; it does not initiate or record payment.
 
-`/api/suppliers`, `/api/purchase-orders`, `/api/receipts`, `/api/invoices` support GET list, POST create and GET/PUT/DELETE `/{id}`. PUT replaces the full editable record and its lines. Lists accept `page`, `page_size` (max 100), and `q` (name/reference search). Responses include `{items,total,page,page_size}`. Errors use `{error:{code,message,details?}}`. OpenAPI documents validated request schemas.
+The project is not production-ready. A production deployment still requires HTTPS, managed secrets, rate limiting, email verification and password recovery, malware scanning, monitoring, backups, dependency review, database-access controls, and load testing.
 
-Authenticated mutations require the `X-CSRF-Token` returned by `/api/auth/me` or sign-in, together with the HttpOnly session cookie. Sessions contain a cryptographically random bearer token; only its SHA-256 digest is stored in the database. Passwords are Argon2-hashed. Sessions expire after 12 hours by default; logout deletes the current session and removing membership revokes that user's sessions for the organization. Cross-origin mutation requests are rejected. Local HTTP sets `COOKIE_SECURE=false`; HTTPS deployment requires `COOKIE_SECURE=true` and an exact `APP_ORIGIN`.
+## Additional documentation
 
-Each organization has an owner. Organization admins manage membership and policy, procurement reviewers work exceptions and submit invoices, finance approvers make finance decisions, and viewers have read/report access. Generic members retain procurement review access for compatibility. The owner cannot be removed. Changing a role revokes that member's current organization sessions. To switch organizations, use the sidebar selector.
-
-Receipts and invoices require a purchase order. Multiple receipt or invoice lines may reference one PO line for split deliveries and charges. Invoice currency must match its PO at record creation. Quantities and prices may differ intentionally; the matching workspace evaluates those differences without mutating source records. A PO with linked receipts/invoices cannot be edited or deleted until those records are removed. Referenced suppliers cannot be deleted. Successful writes and their audit events commit together.
-
-Matching APIs are under `/api/matching`: settings GET/PUT, candidates GET, run list/detail/create and immutable rerun. Matching only reads verified business records in the active organization.
-
-Workflow APIs are under `/api/exceptions`, `/api/approvals`, `/api/reviews/comments`, `/api/audit/events`, and `/api/reports`. Approval uses `DRAFT → PENDING_REVIEW → PENDING_APPROVAL → APPROVED`; rejection and change requests require a reason. Unresolved blocking findings and stale match snapshots prevent progression. Export downloads are authenticated and stored outside the public frontend.
-
-## Boundaries and follow-up work
-
-Exchange-rate conversion, payment tracking, OCR auto-confirmation and automatic posting remain outside the current scope. An approved invoice is a review decision only; it never records or implies payment. Cross-currency matching produces a blocking finding; it never converts money. Document uploads validate extension, declared MIME, actual content, byte size, page count and pixel count. Source files are private and previews are authenticated raster images. Malware scanning is not included.
-
-Production hardening still requires deployment review, HTTPS, managed secrets, login rate limiting, password recovery/email verification, operational monitoring, backups, dependency review and load testing. Session cleanup should periodically delete expired rows. Database row-level security is not enabled; tenant isolation is enforced by application queries and composite foreign keys, so direct SQL access must remain restricted. Document reviews use revision checks; existing business CRUD uses last-write-wins semantics.
-
-See `VERIFICATION.md` for checks actually executed in the implementation environment.
+- [Complete acceptance guide](TEST.md)
+- [Recorded verification results](VERIFICATION.md)
+- [Document ingestion and OCR](docs/MILESTONE2.md)
+- [Deterministic matching](docs/MILESTONE3.md)
+- [Exceptions, approvals, and reports](docs/MILESTONE4.md)
 
 ## License
 
