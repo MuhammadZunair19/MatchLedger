@@ -72,3 +72,19 @@ No application or worker service was left running. PostgreSQL, Docker Compose, f
 | Full FastAPI TestClient suite | Not completed on this Windows host: after 16 pure tests passed, the known CPython `socket.socketpair()` stall recurred before the first TestClient request; the process was interrupted |
 
 The new API integration suite covers assignment, comments, resolution, approval transitions, concurrent stale-version rejection, audit retrieval, real PDF/XLSX generation and authenticated downloads. It is committed for execution on Linux/Docker or another host where Starlette TestClient starts normally. PostgreSQL and Playwright remain tester-run checks. No API, frontend, worker, database or container service was left running. Milestone 4 remains a development milestone, not a production-readiness claim.
+
+## PostgreSQL acceptance rerun — October 12, 2026
+
+The complete backend suite was run inside the Linux backend container against PostgreSQL using the command documented in `TEST.md`:
+
+```powershell
+docker compose exec backend sh -lc 'cd /workspace && TEST_DATABASE_URL="$DATABASE_URL" python -m pytest -q'
+```
+
+Result: **82 passed in 25.88 seconds**. The run exposed and corrected two test-infrastructure regressions: the configured base temporary directory depended on a missing `.pytest_cache` parent inside the container, and an upload-size monkeypatch leaked into the following page-count assertion. It also updated an obsolete Milestone 1 assertion to verify the supported Milestone 3 behavior where multiple invoice lines may reference one PO line. Four non-failing dependency/migration warnings remain in the output.
+
+## Browser acceptance rerun — October 12, 2026
+
+The production frontend image built successfully, frontend type checking passed, and the two Playwright workflows passed together against the real Compose frontend, API, PostgreSQL, Redis and worker: **2 passed in 9.1 seconds**. The run covers procurement CRUD, deterministic matching, exception resolution, approval, reports, audit, session persistence, mobile navigation, private document upload, real extraction, correction persistence and PO confirmation.
+
+The rerun corrected route-state races in the application shell, preserved an exception decision draft while reviewer assignment completes, made ambiguous form controls explicitly addressable, and updated the browser test to distinguish deletion of an unreviewed invoice from the expected 409 protection on an approved invoice with retained history.

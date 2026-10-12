@@ -152,9 +152,10 @@ def test_invalid_uploads(client,auth,documents,monkeypatch):
     for filename, content in [('bad.pdf',b'not a pdf'),('bad.pdf',b'%PDF-1.7\ncorrupt'),('wrong.jpg',(FIXTURES/'invoice_en.pdf').read_bytes()),('script.svg',b'<svg></svg>')]:
         response=client.post('/api/documents/upload',data={'document_type':'supplier_invoice'},files={'file':(filename,content)})
         assert response.status_code == 422,response.text
-    monkeypatch.setattr(settings,'max_upload_size_mb',1)
-    response=client.post('/api/documents/upload',data={'document_type':'supplier_invoice'},files={'file':('large.pdf',b'x'*(2*1024*1024))})
-    assert response.status_code == 413
+    with monkeypatch.context() as upload_limit:
+        upload_limit.setattr(settings,'max_upload_size_mb',1)
+        response=client.post('/api/documents/upload',data={'document_type':'supplier_invoice'},files={'file':('large.pdf',b'x'*(2*1024*1024))})
+        assert response.status_code == 413
     assert client.get('/api/documents').json()['total'] == 0
     monkeypatch.setattr(settings,'max_document_pages',1)
     response=client.post('/api/documents/upload',data={'document_type':'supplier_invoice'},files={'file':('multi.pdf',(FIXTURES/'invoice_multipage.pdf').read_bytes())})

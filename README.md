@@ -1,12 +1,12 @@
-# MatchLedger — Milestones 1–4
+# MatchLedger
 
-A multi-tenant procurement workspace for suppliers, purchase orders, goods receipts and supplier invoices. Next.js App Router, TypeScript, Tailwind CSS and shadcn-style UI primitives; FastAPI, SQLAlchemy, Pydantic and PostgreSQL. This is a development milestone, not a production-ready product.
+A multi-tenant procurement workspace for suppliers, purchase orders, goods receipts and supplier invoices. Next.js App Router, TypeScript, Tailwind CSS and shadcn-style UI primitives; FastAPI, SQLAlchemy, Pydantic and PostgreSQL. This is a development project, not a production-ready product.
 
 ## Included
 
 - Registration creates an organization and owner membership. Login, logout, expiring server-side sessions, organization switching, and owner-controlled membership of existing registered users.
 - Functional supplier, PO, receipt and invoice create/read/update/delete APIs and screens, line-item editors, search, pagination, validation, dashboard and audit activity.
-- SAR defaults with validated ISO 4217 currency codes. PostgreSQL `NUMERIC(18,2)` prices, `NUMERIC(18,3)` quantities and Python `Decimal` arithmetic. Each line is rounded half-up to two places before summation; values are serialized as strings. The frontend formats strings without money arithmetic. All milestone amounts exclude VAT.
+- SAR defaults with validated ISO 4217 currency codes. PostgreSQL `NUMERIC(18,2)` prices, `NUMERIC(18,3)` quantities and Python `Decimal` arithmetic. Each line is rounded half-up to two places before summation; values are serialized as strings. The frontend formats strings without money arithmetic. All sample amounts exclude VAT.
 - Organization filters on resource reads/writes; composite organization foreign keys prevent cross-tenant parent/child references. Supplier, PO, and PO-line consistency is also validated. Foreign IDs return 404. Authentication users are global identities connected through memberships; procurement records are tenant scoped.
 - Organization, User, Membership, Session, Supplier, PurchaseOrder/Line, GoodsReceipt/Line, SupplierInvoice/Line, Document, MatchRun, MatchFinding and AuditEvent tables.
 - PostgreSQL Alembic migration, deterministic sample seed, pytest tests and a real-browser Playwright workflow.
@@ -139,12 +139,16 @@ Receipts and invoices require a purchase order. Multiple receipt or invoice line
 
 Matching APIs are under `/api/matching`: settings GET/PUT, candidates GET, run list/detail/create and immutable rerun. Matching only reads verified business records in the active organization.
 
-Milestone 4 APIs are under `/api/exceptions`, `/api/approvals`, `/api/reviews/comments`, `/api/audit/events`, and `/api/reports`. Approval uses `DRAFT → PENDING_REVIEW → PENDING_APPROVAL → APPROVED`; rejection and change requests require a reason. Unresolved blocking findings and stale match snapshots prevent progression. Export downloads are authenticated and stored outside the public frontend.
+Workflow APIs are under `/api/exceptions`, `/api/approvals`, `/api/reviews/comments`, `/api/audit/events`, and `/api/reports`. Approval uses `DRAFT → PENDING_REVIEW → PENDING_APPROVAL → APPROVED`; rejection and change requests require a reason. Unresolved blocking findings and stale match snapshots prevent progression. Export downloads are authenticated and stored outside the public frontend.
 
 ## Boundaries and follow-up work
 
-Exchange-rate conversion, payment tracking, OCR auto-confirmation and automatic posting remain outside this milestone. An approved invoice is a review decision only; it never records or implies payment. Cross-currency matching produces a blocking finding; it never converts money. Document uploads validate extension, declared MIME, actual content, byte size, page count and pixel count. Source files are private and previews are authenticated raster images. Malware scanning is not included.
+Exchange-rate conversion, payment tracking, OCR auto-confirmation and automatic posting remain outside the current scope. An approved invoice is a review decision only; it never records or implies payment. Cross-currency matching produces a blocking finding; it never converts money. Document uploads validate extension, declared MIME, actual content, byte size, page count and pixel count. Source files are private and previews are authenticated raster images. Malware scanning is not included.
 
 Production hardening still requires deployment review, HTTPS, managed secrets, login rate limiting, password recovery/email verification, operational monitoring, backups, dependency review and load testing. Session cleanup should periodically delete expired rows. Database row-level security is not enabled; tenant isolation is enforced by application queries and composite foreign keys, so direct SQL access must remain restricted. Document reviews use revision checks; existing business CRUD uses last-write-wins semantics.
 
 See `VERIFICATION.md` for checks actually executed in the implementation environment.
+
+## License
+
+MatchLedger is available under the [MIT License](LICENSE).

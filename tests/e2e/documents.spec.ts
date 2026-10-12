@@ -14,7 +14,7 @@ test('private PO upload, real extraction, saved correction and confirmation', as
   await expect(page.getByRole('heading', { name: 'Procurement overview' })).toBeVisible();
   await page.getByRole('navigation').getByRole('button', { name: 'Documents', exact: true }).click();
   await page.getByRole('link', { name: 'Upload documents', exact: true }).click();
-  await page.getByLabel('Document type').selectOption('purchase_order');
+  await page.getByLabel('Document type', { exact: true }).selectOption('purchase_order');
   await page.getByLabel('Upload files').setInputFiles(path.resolve(__dirname, '../../sample_data/documents/purchase_order_en.pdf'));
   await page.getByRole('table').getByRole('link', { name: 'purchase_order_en.pdf', exact: true }).click();
   await page.getByRole('button', { name: 'Start extraction', exact: true }).click();
@@ -32,6 +32,7 @@ test('private PO upload, real extraction, saved correction and confirmation', as
   await expect(page.getByText('Verified and saved', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Confirm extraction', exact: true })).toHaveCount(0);
   await page.getByRole('navigation').getByRole('button', { name: 'Purchase orders', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Purchase orders', exact: true })).toBeVisible();
   await expect(page.getByRole('table')).toContainText(reference);
   await expect(page.getByRole('table')).toContainText('SAR 5,000.00');
 });

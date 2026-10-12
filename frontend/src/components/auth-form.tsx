@@ -17,7 +17,7 @@ export default function AuthForm({ onAuth }: { onAuth: (auth: Auth) => void }) {
     <section className="bg-[#122c3c] text-white p-10 lg:p-20 flex flex-col justify-between gap-16">
       <div className="flex items-center gap-3 text-2xl font-bold"><Layers3 className="text-teal-300" /> MatchLedger<span className="text-teal-300">.</span></div>
       <div><p className="eyebrow text-teal-300 mb-5">A clearer view of procurement</p><h1 className="text-4xl lg:text-6xl font-semibold leading-tight tracking-tight">Every order.<br />Every delivery.<br /><span className="text-teal-300">One connected ledger.</span></h1><p className="text-slate-300 mt-7 max-w-md text-base leading-7">Keep your suppliers, purchase orders, delivery receipts and invoices together in a workspace built for your team.</p></div>
-      <p className="text-slate-400 text-xs">MatchLedger · Milestone 1 / Procurement records</p>
+      <p className="text-slate-400 text-xs">MatchLedger · Procurement records</p>
     </section>
     <section className="flex items-center justify-center p-8"><div className="w-full max-w-sm"><p className="eyebrow text-teal-700 mb-3">Your procurement workspace</p><h2 className="text-3xl font-semibold">{register ? 'Start your ledger' : 'Welcome back'}</h2><p className="text-slate-500 mt-3 mb-8">{register ? 'Create an account and your organization.' : 'Sign in to continue to your organization.'}</p>
       <form onSubmit={submit} className="space-y-5">

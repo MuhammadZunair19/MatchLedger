@@ -134,8 +134,10 @@ def test_links_and_po_lock(client, records):
     body = payload(supplier, po)
     assert client.post('/api/invoices', json={**body, 'supplier_id': second['id']}).status_code == 422
     assert client.post('/api/invoices', json={**body, 'currency': 'USD'}).status_code == 422
-    assert client.post('/api/invoices', json={**body, 'lines': body['lines'] * 2}).status_code == 422
-    assert client.post('/api/invoices', json=body).status_code == 201
+    split_invoice = client.post('/api/invoices', json={**body, 'lines': body['lines'] * 2})
+    assert split_invoice.status_code == 201
+    assert len(split_invoice.json()['lines']) == 2
+    assert split_invoice.json()['total'] == '11000.00'
     update = {'supplier_id': supplier['id'], 'number': 'Edited', 'date': '2026-10-09', 'lines': [{'description': 'Roll', 'quantity': '1', 'unit_price': '1'}]}
     assert client.put('/api/purchase-orders/' + po['id'], json=update).status_code == 409
 
